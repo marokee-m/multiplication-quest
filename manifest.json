@@ -1,0 +1,27 @@
+{
+  "name": "เกมสูตรคูณ Roblox Quest",
+  "short_name": "สูตรคูณ",
+  "description": "ฝึกท่องสูตรคูณสไตล์ Roblox สนุกสนาน สะสม Robux ปลดล็อกไอเทม!",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#191B1D",
+  "theme_color": "#1E63E6",
+  "lang": "th",
+  "icons": [
+    {
+      "src": "logo.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["education", "games"],
+  "screenshots": []
+}

@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>เกมสูตรคูณ | Roblox Multiplication Quest</title>
+
+  <!-- ========== PWA / Home Screen Icons ========== -->
+  <!-- Favicon สำหรับ Browser ทั่วไป -->
+  <link rel="icon" type="image/png" sizes="32x32"   href="logo.png">
+  <link rel="icon" type="image/png" sizes="16x16"   href="logo.png">
+  <link rel="shortcut icon"         href="logo.png">
+
+  <!-- Apple Touch Icon สำหรับ iOS "Add to Home Screen" -->
+  <link rel="apple-touch-icon" sizes="180x180" href="logo.png">
+  <link rel="apple-touch-icon" sizes="152x152" href="logo.png">
+  <link rel="apple-touch-icon" sizes="144x144" href="logo.png">
+  <link rel="apple-touch-icon" sizes="120x120" href="logo.png">
+  <link rel="apple-touch-icon" sizes="76x76"   href="logo.png">
+
+  <!-- PWA Manifest -->
+  <link rel="manifest" href="manifest.json">
+
+  <!-- iOS PWA meta tags -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="เกมสูตรคูณ">
+  <meta name="mobile-web-app-capable" content="yes">
+
+  <!-- Theme color (Android Chrome status bar) -->
+  <meta name="theme-color" content="#191B1D">
+
+  <!-- SEO / Share meta -->
+  <meta name="description"   content="ฝึกท่องสูตรคูณสไตล์ Roblox สนุกสนาน วิ่งหลบบอส ทำฟาร์ม เดินรันเวย์ สะสม Robux ปลดล็อกไอเทม!">
+  <meta name="keywords"      content="เกมสูตรคูณ, Roblox, คณิตศาสตร์, ประถม, สูตรคูณ">
+  <meta name="author"        content="Yala Rajabhat University">
+
+  <!-- Open Graph (Facebook / LINE share) -->
+  <meta property="og:title"       content="เกมสูตรคูณ – Roblox Multiplication Quest">
+  <meta property="og:description" content="ฝึกสูตรคูณสุดมันส์สไตล์ Roblox! วิ่งหลบบอส ทำฟาร์มลอยฟ้า เดินรันเวย์แฟชั่น">
+  <meta property="og:image"       content="logo.png">
+  <meta property="og:type"        content="website">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card"  content="summary_large_image">
+  <meta name="twitter:title" content="เกมสูตรคูณ – Roblox Multiplication Quest">
+  <meta name="twitter:image" content="logo.png">
+
+  <!-- ========== Fonts ========== -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@300..700&family=Rubik+Mono+One&family=Mitr:wght@300;400;500;700&display=swap" rel="stylesheet">
+
+  <!-- ========== Three.js 3D WebGL Library ========== -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Top Navigation Bar (Roblox Style) -->
+  <header class="roblox-header">
+    <div class="header-left">
+      <div class="roblox-logo-container">
+        <span class="roblox-tilt-logo"></span>
+        <span class="logo-text">MULTIPLICATION QUEST</span>
+      </div>
+    </div>
+    
+    <div class="header-right">
+      <!-- Player Nickname Display -->
+      <div class="player-profile-name">
+        <span class="icon-avatar">👤</span>
+        <input type="text" id="player-username" value="GuestPlayer" title="คลิกเพื่อเปลี่ยนชื่อ" maxlength="15" />
+      </div>
+      
+      <!-- Currency Display (Robux R$) -->
+      <div class="robux-counter-container" id="robux-display-btn" title="ร้านค้าแฟชั่น">
+        <svg class="robux-icon-svg" viewBox="0 0 20 20" fill="none" width="18" height="18">
+          <circle cx="10" cy="10" r="9" fill="#00B06F" stroke="#00D385" stroke-width="1.5"/>
+          <text x="10" y="14" text-anchor="middle" fill="white" font-size="9" font-weight="bold" font-family="Arial">R$</text>
+        </svg>
+        <span id="robux-balance">100</span>
+      </div>
+      
+      <!-- Audio Toggle Button -->
+      <button id="sound-toggle-btn" class="header-icon-btn" title="เปิด/ปิดเสียง">
+        <span id="sound-icon">🔊</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Game Container -->
+  <main class="game-wrapper">
+    
+    <!-- Left Sidebar: Roblox 3D Avatar Showcase -->
+    <aside class="avatar-sidebar">
+      <div class="panel-header">อวาตาร์ของคุณ</div>
+      
+      <!-- The 3D-rotating character viewer -->
+      <div class="avatar-viewer">
+        <div id="sidebar-avatar-3d-container" style="width: 100%; height: 100%;"></div>
+      </div>
+      
+      <!-- Gender Toggle -->
+      <div class="gender-toggle-row">
+        <button id="gender-male-btn" class="gender-btn active" title="Avatar ชาย">
+          <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M9 9c0-2.21 1.79-4 4-4s4 1.79 4 4-1.79 4-4 4-4-1.79-4-4zm8 9.5V21h-2v-2.5c0-2.49-2.01-4.5-4.5-4.5S6 16.01 6 18.5V21H4v-2.5C4 14.91 6.41 12.5 9 12.5h6c2.59 0 5 2.41 5 6z"/><path d="M20 4l-4 4h3v4h2V8h3l-4-4z"/></svg>
+          ชาย
+        </button>
+        <button id="gender-female-btn" class="gender-btn" title="Avatar หญิง">
+          <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M9 9c0-2.21 1.79-4 4-4s4 1.79 4 4-1.79 4-4 4-4-1.79-4-4zm8 9.5V21h-2v-2.5c0-2.49-2.01-4.5-4.5-4.5S6 16.01 6 18.5V21H4v-2.5C4 14.91 6.41 12.5 9 12.5h6c2.59 0 5 2.41 5 6z"/><circle cx="12" cy="20" r="1.5" fill="currentColor"/><line x1="12" y1="18" x2="12" y2="22" stroke="currentColor" stroke-width="1.5"/></svg>
+          หญิง
+        </button>
+      </div>
+
+      <div class="avatar-actions">
+        <button id="btn-open-shop" class="btn-primary btn-yellow block-btn">
+          <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16" style="vertical-align:middle;margin-right:4px"><path d="M7 18c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm10 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zM5.83 6h14.17l-1.68 8.39c-.17.85-.93 1.61-1.79 1.61H7.42c-.83 0-1.58-.67-1.66-1.5L5.25 8H4l-.83-2H1V4h4l.83 2z"/></svg>
+          Catalog ร้านค้า
+        </button>
+        <button id="btn-custom-colors" class="btn-secondary block-btn">
+          <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16" style="vertical-align:middle;margin-right:4px"><path d="M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9c.83 0 1.5-.67 1.5-1.5 0-.39-.15-.74-.39-1.01-.23-.26-.38-.61-.38-.99 0-.83.67-1.5 1.5-1.5H16c2.76 0 5-2.24 5-5 0-4.42-4.03-8-9-8zm-5.5 9c-.83 0-1.5-.67-1.5-1.5S5.67 9 6.5 9 8 9.67 8 10.5 7.33 12 6.5 12zm3-4C8.67 8 8 7.33 8 6.5S8.67 5 9.5 5s1.5.67 1.5 1.5S10.33 8 9.5 8zm5 0c-.83 0-1.5-.67-1.5-1.5S13.67 5 14.5 5s1.5.67 1.5 1.5S15.33 8 14.5 8zm3 4c-.83 0-1.5-.67-1.5-1.5S16.67 9 17.5 9s1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/></svg>
+          เปลี่ยนสีบล็อก
+        </button>
+      </div>
+    </aside>
+
+    <!-- Right Panel: Dynamic Screen Switcher -->
+    <section class="screen-container">
+      
+      <!-- 1. HUB / HOME SCREEN -->
+      <div id="screen-hub" class="game-screen active">
+        <div class="welcome-banner">
+          <h1>ยินดีต้อนรับสู่เกาะสูตรคูณ Roblox! 🚀</h1>
+          <p>ฝึกท่องสูตรคูณ สะสมเหรียญ Robux และปลดล็อกไอเทมแฟชั่นสุดลิมิเต็ด!</p>
+        </div>
+        
+        <div class="mode-selection-grid">
+          <!-- Training Room Card -->
+          <div class="mode-card card-training" id="mode-to-training">
+            <div class="mode-icon-svg">
+              <svg viewBox="0 0 48 48" fill="none"><rect x="4" y="20" width="40" height="24" rx="3" fill="#1e63e6"/><rect x="12" y="8" width="24" height="16" rx="2" fill="#3e83ff"/><rect x="20" y="28" width="8" height="12" fill="#a5d8ff"/><rect x="6" y="24" width="8" height="8" fill="#a5d8ff" rx="1"/><rect x="34" y="24" width="8" height="8" fill="#a5d8ff" rx="1"/><rect x="21" y="2" width="6" height="8" fill="#ffd700"/></svg>
+            </div>
+            <h2>ห้องเตรียมความพร้อม</h2>
+            <p>ฝึกจำแม่ 2-24 ด้วย 2 กิจกรรม: แร็ปเปอร์ Beat & Tap จังหวะสนุก และนักขนส่งบล็อกซ้อนหอคอย</p>
+            <button class="btn-mode">เข้าห้องเรียนรู้ ➔</button>
+          </div>
+
+          <!-- Arena Card -->
+          <div class="mode-card card-arena" id="mode-to-arena">
+            <div class="mode-icon-svg">
+              <svg viewBox="0 0 48 48" fill="none"><path d="M8 40L6 42l4 4 2-2-4-4zm3-3L22 26l-4-4L7 33l4 4zm18-26l8-8 2 2-8 8-2-2zm6-2l4-4 4 4-4 4-4-4zM16 34l-4 4 4 4 4-4-4-4zm10-6l-4-4-12 12 4 4 12-12z" fill="#e74c3c"/><path d="M36 4L44 12l-4 4-8-8 4-4z" fill="#ffd700"/><circle cx="32" cy="16" r="4" fill="none" stroke="#ffd700" stroke-width="2"/></svg>
+            </div>
+            <h2>ลงสนามจริง 3D (Arena)</h2>
+            <p>ท้าทาย 3 สาย: บอสโกเลมหลบวงแดง, ฟาร์มเกาะลอยฟ้า และรันเวย์แฟชั่นโชว์</p>
+            <button class="btn-mode btn-neon-green">เข้าสู่อารีน่า ➔</button>
+          </div>
+        </div>
+
+        <!-- Mini Stats & Badges Achievement -->
+        <div class="achievements-section">
+          <h3>🏆 เกียรติยศระดับเซียนสูตรคูณ</h3>
+          <div class="badges-row" id="badges-list">
+            <!-- Badges will be generated by JS -->
+          </div>
+        </div>
+      </div>
+
+      <!-- 2. PREPARATION / TRAINING ROOM -->
+      <div id="screen-training" class="game-screen">
+        <div class="screen-header">
+          <button class="btn-back" id="back-to-hub-from-training">◀ กลับหน้าหลัก</button>
+          <h2>🏫 ห้องฝึกเตรียมความพร้อมสูตรคูณ 3D</h2>
+        </div>
+
+        <!-- Table Selector Grid (2 - 24) -->
+        <div class="table-selector-section">
+          <label for="training-table-select">เลือกแม่สูตรคูณที่จะฝึกฝน:</label>
+          <div class="table-scroller" id="training-table-buttons">
+            <!-- Table buttons (2-24) injected here -->
+          </div>
+        </div>
+
+        <div class="training-core-panel" id="training-area-wrapper" style="display: none;">
+          <div class="current-selected-header">
+            กำลังเรียนรู้: <span id="current-training-table-label" class="table-tag">แม่ 2</span>
+          </div>
+
+          <!-- Tool Tabs Navigation -->
+          <div class="tool-tabs">
+            <button class="tab-btn active" data-tab="tab-stepdance">
+              <svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16" style="vertical-align:middle;margin-right:4px"><path d="M10 2a8 8 0 100 16A8 8 0 0010 2zm0 14A6 6 0 1110 4a6 6 0 010 12zm-1-9h2v4.25l2.52 1.5-.75 1.23L9 12V7z"/></svg>
+              สเต็ปแดนซ์ ลุยหน้า-ถอย
+            </button>
+            <button class="tab-btn" data-tab="tab-trampoline">
+              <svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16" style="vertical-align:middle;margin-right:4px"><path d="M10 2l2 5h5l-4 3 2 5-5-3-5 3 2-5-4-3h5z"/></svg>
+              กระโดดเช็กคำตอบ
+            </button>
+          </div>
+
+          <!-- Tab Content Views -->
+          <div class="tab-content-container">
+
+            <!-- Activity 1: Step Dance -->
+            <div id="tab-stepdance" class="tab-view active">
+              <div class="stepdance-wrapper">
+                <div class="stepdance-sidebar">
+                  <div class="beattap-formula" id="sd-formula">2 × ? = ?</div>
+                  <div class="beattap-stats" style="gap:6px;">
+                    <div>ก้าว: <strong id="sd-step">0</strong> / 12</div>
+                    <div>คำตอบ: <strong id="sd-result" style="color:var(--rbx-neon-cyan);font-size:1.3rem;">?</strong></div>
+                  </div>
+                  <div class="beattap-feedback" id="sd-feedback"></div>
+                  <div class="sd-key-hints">
+                    <div class="sd-key-hint"><span class="sd-key">A</span> ซ้าย</div>
+                    <div class="sd-key-hint"><span class="sd-key">W</span> หน้า/กลาง</div>
+                    <div class="sd-key-hint"><span class="sd-key">D</span> ขวา</div>
+                    <div class="sd-key-hint"><span class="sd-key">S</span> ถอย/รีเซ็ต</div>
+                  </div>
+                  <div class="dj-controls" style="flex-direction:column;gap:6px;margin-top:8px;">
+                    <button class="dj-beat-style-btn active" data-beat="hiphop" style="width:100%;">🎧 HipHop</button>
+                    <button class="dj-beat-style-btn" data-beat="edm" style="width:100%;">⚡ EDM</button>
+                    <button class="dj-beat-style-btn" data-beat="drum" style="width:100%;">🥁 Drum</button>
+                  </div>
+                  <p class="builder-tip" style="margin-top:8px;">💡 กด WASD ตามทิศที่ไฟนีออนสว่าง!</p>
+                </div>
+                <div class="stepdance-arena" id="sd-arena">
+                  <!-- 3D step dance scene -->
+                </div>
+              </div>
+            </div>
+
+            <!-- Activity 2: Answer Trampoline -->
+            <div id="tab-trampoline" class="tab-view">
+              <div class="stacker-wrapper">
+                <div class="stacker-sidebar">
+                  <div class="stacker-formula" id="tramp-formula">2 × 1 = ?</div>
+                  <div class="stacker-instruction">
+                    วิ่งไปที่แท่นที่มีคำตอบถูก<br>
+                    แล้วกด <strong style="color:var(--rbx-neon-cyan);">Space</strong> เพื่อกระโดด!
+                  </div>
+                  <div class="stacker-total-display">
+                    <div class="stacker-total-num" id="tramp-step" style="font-size:2rem;">1</div>
+                    <div style="font-size:0.8rem;color:var(--rbx-text-muted);">/ 12 ข้อ</div>
+                  </div>
+                  <div class="beattap-feedback" id="tramp-feedback" style="margin-top:6px;"></div>
+                  <p class="builder-tip" style="margin-top:8px;">💡 WASD วิ่ง | Space กระโดด | คลิกขวาลากหมุนกล้อง</p>
+                </div>
+                <div class="stacker-towers-area" id="tramp-arena" style="min-height:280px;background:linear-gradient(180deg,#0a1628,#1a2a4a);"></div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- Initial Info Alert if no table selected -->
+        <div class="training-select-prompt" id="training-prompt">
+          <div class="prompt-icon">💡</div>
+          <h3>กรุณาเลือกแม่สูตรคูณข้างบน เพื่อเริ่มต้นท่องจำแบบแสนสนุก!</h3>
+        </div>
+      </div>
+
+      <!-- 3. REAL ARENA MODE -->
+      <div id="screen-arena" class="game-screen">
+        <div class="screen-header">
+          <button class="btn-back" id="back-to-hub-from-arena">◀ กลับหน้าหลัก</button>
+          <h2>⚔️ โหมดลงสนามจริง (Real Arena)</h2>
+        </div>
+
+        <!-- Zone Selector Row -->
+        <div class="arena-zones-selector">
+          <button class="zone-tab active" data-zone="1">
+            <span class="zone-number">โซนที่ 1</span>
+            <span class="zone-name">🏔️ แม่ 2-6 (Green Hills)</span>
+          </button>
+          <button class="zone-tab" data-zone="2">
+            <span class="zone-number">โซนที่ 2</span>
+            <span class="zone-name">🌋 แม่ 7-12 (Lava Volcano)</span>
+          </button>
+          <button class="zone-tab" data-zone="3">
+            <span class="zone-number">โซนที่ 3</span>
+            <span class="zone-name">🪐 แม่ 13-24 (Cyber Space)</span>
+          </button>
+        </div>
+
+        <!-- Arena Main Content Area -->
+        <div class="arena-content-box">
+          
+          <!-- Step 1: Select multiplication table in zone -->
+          <div id="arena-step-table" class="arena-step active">
+            <h3>กรุณาเลือกแม่สูตรคูณในโซนนี้:</h3>
+            
+            <div class="sequence-play-box">
+              <button class="btn-sequence-play" id="btn-play-sequence-zone">🔥 ลุยท้าทายตามลำดับ (แม่น้อย ➔ แม่มาก) 🔥</button>
+            </div>
+            
+            <div class="arena-table-grid" id="arena-table-list">
+              <!-- Tables for active zone injected here -->
+            </div>
+          </div>
+
+          <!-- Step 2: Select Path (Play Style) -->
+          <div id="arena-step-path" class="arena-step">
+            <button class="btn-back-step" id="btn-back-to-arena-tables">◀ เปลี่ยนแม่สูตรคูณ</button>
+            
+            <div class="selected-table-badge-bar">
+              คุณเลือกท้าทาย: <span id="arena-selected-table-label" class="table-tag neon-border">แม่ 5</span>
+            </div>
+
+            <h3 class="center-text">เลือกสายการเล่นที่คุณชื่นชอบ!</h3>
+
+            <!-- Multiplayer Toggle -->
+            <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin:8px 0 12px;background:rgba(0,0,0,0.3);border-radius:8px;padding:8px 16px;border:1px solid rgba(255,255,255,0.1);">
+              <span style="font-size:0.88rem;font-weight:700;">👥 โหมด 2 ผู้เล่น (P1: WASD, P2: ↑↓←→)</span>
+              <label class="toggle-switch" style="position:relative;display:inline-block;width:46px;height:24px;cursor:pointer;">
+                <input type="checkbox" id="multiplayer-toggle" style="opacity:0;width:0;height:0;">
+                <span style="position:absolute;inset:0;background:#333;border-radius:12px;transition:0.2s;"></span>
+                <span id="toggle-knob" style="position:absolute;left:3px;top:3px;width:18px;height:18px;background:#fff;border-radius:50%;transition:0.2s;"></span>
+              </label>
+            </div>
+            
+            <div class="path-cards-container">
+              <!-- Action Path (3D Boss Battle) -->
+              <div class="path-card path-action" data-path="action">
+                <div class="path-icon">👾⚔️</div>
+                <h4>สายลุย (3D Boss Battle)</h4>
+                <p>ลุยสนามหลบลูกหินเตือนภัยแดงบอส! วิ่งชนปุ่มตัวเลือกคำตอบ A B C สุ่มทิศรอบบอส สะสมคอมโบดาเมจฟันบอส!</p>
+                <div class="path-difficulty hard">ระดับความตื่นเต้น: สู้ศึกยักษ์ 🔥🎮</div>
+                <button class="btn-path">สวมดาบสู้บอส! ➔</button>
+              </div>
+
+              <!-- Chill Path (3D Chill Explorer) -->
+              <div class="path-card path-chill" data-path="chill">
+                <div class="path-icon">🏕️🌈</div>
+                <h4>สายชิล (3D Chill Explorer)</h4>
+                <p>ตอบคำถามสูตรคูณในหุบเขา 3D สบายใจ ไม่มีบอสจู่โจม วิ่งชนประตูชิลๆ มีนิทานลอยฟ้าเฉลย!</p>
+                <div class="path-difficulty easy">ระดับความตื่นเต้น: ผ่อนคลาย 🍃</div>
+                <button class="btn-path">เล่นสบายๆ ➔</button>
+              </div>
+
+              <!-- Dressup Path (3D Fashion Runway) -->
+              <div class="path-card path-dressup" data-path="dressup">
+                <div class="path-icon">🎭👑</div>
+                <h4>สายแต่งตัว (3D Fashion Quest)</h4>
+                <p>ท้าทายภารกิจสูตรคูณบนเวทีรันเวย์สปอร์ตไลท์ 3D เพื่อล่าปลดล็อกหมวกและเสื้อผ้าคอสตูมแรร์ฟรี!</p>
+                <div class="path-difficulty medium">ระดับความตื่นเต้น: ท้าทายรันเวย์ 🏆</div>
+                <button class="btn-path">ทำภารกิจล่าชุด! ➔</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Step 3: Game Screen (Dynamic load based on style) -->
+          <div id="arena-step-gameplay" class="arena-step">
+            
+            <!-- A. 3D ACTION BOSS BATTLE INTERFACE -->
+            <div id="gameplay-action" class="gameplay-subscreen" style="display: none;">
+              <!-- HP HUD — prominent bars -->
+              <div class="battle-hp-panels" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 8px; padding: 8px; background:rgba(0,0,0,0.55); border-radius:10px; border:1px solid rgba(255,255,255,0.12)">
+                <div class="boss-hp-container">
+                  <div class="boss-label" style="display:flex;justify-content:space-between;align-items:center;">
+                    <span>👾 บอสแม่ <span id="boss-table-val">4</span></span>
+                    <span style="font-size:0.8rem;color:var(--rbx-neon-cyan);">✅ <span id="boss-questions-counter">0 / 12</span></span>
+                  </div>
+                  <div class="boss-hp-track">
+                    <div class="boss-hp-fill" id="boss-hp-fill-bar" style="width: 100%;"></div>
+                    <div class="boss-hp-text"><span id="boss-current-hp">500</span> / <span id="boss-max-hp">500</span> HP</div>
+                  </div>
+                </div>
+
+                <div class="player-hp-container" style="background-color: #0e0f11; border: 2px solid var(--rbx-green); border-radius: 8px; padding: 10px; box-shadow: 0 0 10px rgba(0,176,111,0.2); display: flex; flex-direction: column; gap: 6px;">
+                  <div class="player-label" style="font-weight: 700; color: #00d385; font-size: 0.95rem;">👤 พลังชีวิตผู้เล่น (HP) | 💥 คอมโบ: <span id="action-combo-val" style="color: var(--rbx-neon-pink); font-weight: 900;">0</span>x</div>
+                  <div class="player-hp-track" style="height: 20px; background-color: #1a1a1a; border-radius: 10px; overflow: hidden; position: relative; border: 1px solid #333;">
+                    <div class="player-hp-fill" id="player-hp-fill-bar" style="height: 100%; background: linear-gradient(90deg, #00b06f 0%, #39ff14 100%); width: 100%; transition: width 0.2s ease-out;"></div>
+                    <div class="player-hp-text" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.8rem; color: #FFF; text-shadow: 1px 1px 2px #000;"><span id="player-current-hp">100</span> / 100 HP</div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- R$ earned + multiplayer indicator -->
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                <span style="font-size:0.82rem;color:var(--rbx-neon-cyan);">💰 R$: <span id="action-robux-earned">0</span></span>
+                <span id="p2-hud" style="display:none;font-size:0.82rem;">
+                  <span style="color:#e040fb;font-weight:700;">👤 P2 HP: </span>
+                  <span style="background:#1a0030;border:1px solid #e040fb;border-radius:4px;padding:1px 6px;display:inline-block;width:70px;position:relative;overflow:hidden;height:14px;">
+                    <span id="player2-hp-fill-bar" style="position:absolute;top:0;left:0;height:100%;background:linear-gradient(90deg,#9c27b0,#e040fb);width:100%;transition:width 0.2s;"></span>
+                    <span id="player2-current-hp" style="position:relative;z-index:1;font-size:0.7rem;color:#fff;font-weight:700;">100</span>
+                  </span>
+                </span>
+              </div>
+
+              <!-- 3D Canvas Rendering viewport container -->
+              <div class="arena-3d-wrapper">
+                <div id="arena-3d-viewport"></div>
+
+                <!-- Floating Question in 3D -->
+                <div class="action-question-banner">
+                  <span class="math-question" id="action-question">4 x 5 = ?</span>
+                </div>
+
+                <!-- Danger zone warning overlay -->
+                <div id="danger-zone-warning" style="display:none; position:absolute; top:12px; left:50%; transform:translateX(-50%); background:rgba(200,0,0,0.85); color:#fff; font-weight:900; padding:6px 18px; border-radius:8px; font-size:1rem; z-index:200; pointer-events:none;">⚠️ หลบวงแดง!</div>
+
+                <!-- On-Screen Virtual Joystick (touch devices support) -->
+                <div id="joystick-zone" class="joystick-wrapper">
+                  <div class="joystick-ring">
+                    <div class="joystick-knob" id="joystick-handle"></div>
+                  </div>
+                </div>
+
+                <!-- Text Instruction Overlay -->
+                <div class="hud-instruction-text">
+                  ⌨️ WASD/Arrow = เดิน &nbsp;|&nbsp; หลบวงแดง! &nbsp;|&nbsp; วิ่งชนพอร์ทัล A B C เพื่อโจมตี
+                </div>
+              </div>
+            </div>
+
+            <!-- B. 3D CHILL FARM ISLAND -->
+            <div id="gameplay-chill" class="gameplay-subscreen" style="display: none;">
+              <div class="chill-header-hud">
+                <div>🌱 ฟาร์มเกาะลอยฟ้า — เดินรดน้ำต้นไม้ตอบสูตรคูณ!</div>
+                <div>💎 อัญมณี: <span id="chill-robux-earned">0</span></div>
+              </div>
+
+              <div class="arena-3d-wrapper">
+                <div id="chill-3d-viewport"></div>
+
+                <!-- Question banner — shows when near a tree -->
+                <div id="chill-question-banner" class="action-question-banner" style="display:none;">
+                  <span class="math-question" id="chill-question">🌱 รดน้ำต้นไม้: 2 × 7 = ?</span>
+                </div>
+
+                <!-- Joystick for touch -->
+                <div id="joystick-zone-chill" class="joystick-wrapper">
+                  <div class="joystick-ring">
+                    <div class="joystick-knob" id="joystick-handle-chill"></div>
+                  </div>
+                </div>
+
+                <!-- Hint button overlay -->
+                <button id="chill-farm-hint-btn" class="chill-farm-hint-btn" style="display:none;">
+                  <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17h-2v-2h2v2zm2.07-7.75l-.9.92C13.45 12.9 13 13.5 13 15h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26c.37-.36.59-.86.59-1.41 0-1.1-.9-2-2-2s-2 .9-2 2H8c0-2.21 1.79-4 4-4s4 1.79 4 4c0 .88-.36 1.68-.93 2.25z"/></svg>
+                  💡 ขอตัวช่วย
+                </button>
+
+                <div class="hud-instruction-text">
+                  ⌨️ WASD = เดิน | เดินใกล้ต้นไม้ → ตอบโจทย์ | วิ่งชนพอร์ทัล A B C
+                </div>
+              </div>
+
+              <div class="chill-nav" style="margin-top: 8px;">
+                <button class="btn-quit" id="btn-quit-chill">🏳️ กลับไปตั้งหลัก</button>
+              </div>
+            </div>
+
+            <!-- C. 3D FASHION RUNWAY INTERFACE -->
+            <div id="gameplay-dressup" class="gameplay-subscreen" style="display: none;">
+              <div class="dressup-quest-hud">
+                <div class="runway-hud-row">
+                  <span>🎭 <span id="quest-item-icon">👑</span> ล่า: <span id="quest-item-name" class="legendary-text">มงกุฎราชา</span></span>
+                  <span>คอมโบ: <span id="quest-current-combo">0</span>/<span id="quest-target-combo-text">5</span></span>
+                </div>
+                <div class="combo-progress-bar" style="margin-top:6px;">
+                  <div class="combo-progress-fill" id="quest-combo-fill" style="width: 0%;"></div>
+                </div>
+              </div>
+
+              <div class="arena-3d-wrapper">
+                <div id="dressup-3d-viewport"></div>
+
+                <!-- Question banner -->
+                <div class="action-question-banner">
+                  <span class="math-question" id="dressup-question">5 × 9 = ?</span>
+                </div>
+
+                <!-- Joystick -->
+                <div id="joystick-zone-dressup" class="joystick-wrapper">
+                  <div class="joystick-ring">
+                    <div class="joystick-knob" id="joystick-handle-dressup"></div>
+                  </div>
+                </div>
+
+                <div class="hud-instruction-text">
+                  ⌨️ WASD = เดิน | วิ่งชนหุ่นโชว์ที่ถือคำตอบถูก | ตอบครบ = เดินรันเวย์!
+                </div>
+              </div>
+
+              <div class="chill-nav" style="margin-top: 8px;">
+                <button class="btn-quit" id="btn-quit-dressup">🏳️ ถอยทัพก่อน</button>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Step 4: Game Result Screen -->
+          <div id="arena-step-result" class="arena-step">
+            <div class="result-message-card">
+              <div class="result-badge-icon" id="result-icon">🎉</div>
+              <h2 id="result-title">สุดยอดไปเลยชาวร็อค!</h2>
+              <p id="result-summary">คุณตอบถูกทั้งหมด 8 ข้อ ได้รับเหรียญสะสมเพิ่มเติม!</p>
+              
+              <div class="reward-box">
+                <span class="reward-title">เงินรางวัลที่ได้รับ:</span>
+                <span class="reward-robux"><span class="robux-icon">R$</span> <span id="result-robux-reward">50</span></span>
+              </div>
+              
+              <div class="unlocked-items-alert" id="result-unlocked-box" style="display: none;">
+                <h4>🎁 ไอเทมพิเศษที่ปลดล็อกได้ฟรี:</h4>
+                <p id="result-unlocked-item-name" class="legendary-text">ดาบคาดหลังสุดแรร์</p>
+              </div>
+              
+              <div class="result-actions">
+                <button class="btn-primary btn-yellow" id="btn-result-replay">⚔️ เล่นใหม่อีกครั้ง</button>
+                <button class="btn-secondary" id="btn-result-to-shop">🛍️ ไปแต่งตัวกันเลย</button>
+                <button class="btn-primary" id="btn-result-to-lobby">🏡 กลับหน้าหลัก</button>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- 4. CATALOG SHOP & DRESSING ROOM SCREEN -->
+      <div id="screen-shop" class="game-screen">
+        <div class="screen-header">
+          <button class="btn-back" id="back-to-hub-from-shop">◀ กลับหน้าหลัก</button>
+          <h2>🛍️ Roblox Catalog - ร้านแต่งตัวตัวละคร</h2>
+        </div>
+
+        <div class="shop-content-layout">
+          <!-- Shop Sidebar / Inventory Categories -->
+          <div class="shop-filter-bar">
+            <button class="shop-cat-btn active" data-cat="all">🌈 ทั้งหมด</button>
+            <button class="shop-cat-btn" data-cat="hat">👒 หมวกและหมวกแก๊ป</button>
+            <button class="shop-cat-btn" data-cat="glasses">🕶️ แว่นตาและหน้ากาก</button>
+            <button class="shop-cat-btn" data-cat="back">🗡️ ดาบและปีกติดหลัง</button>
+            <button class="shop-cat-btn" data-cat="shirt">👕 เสื้อยืด (Shirts)</button>
+            <button class="shop-cat-btn" data-cat="pants">👖 กางเกง (Pants)</button>
+            <button class="shop-cat-btn" data-cat="pet">🐉 สัตว์เลี้ยงคู่ใจ</button>
+          </div>
+
+          <!-- Product Grid Catalog -->
+          <div class="shop-products-wrapper">
+            <div class="robux-shop-info">
+              <span>เงินของคุณปัจจุบัน: <strong class="robux-glow"><span class="robux-icon">R$</span> <span id="shop-balance-val">100</span></strong></span>
+              <span class="catalog-hint">💡 เล่นตอบคำถามสูตรคูณในอารีน่าเพื่อหา Robux เพิ่มได้!</span>
+            </div>
+            
+            <div class="products-grid" id="catalog-products">
+              <!-- Item cards generated by JS -->
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 5. PALETTE COLOR CHANGER MODAL -->
+      <div id="color-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-content">
+          <h3>🎨 เลือกเฉดสีตัวอวาตาร์ Roblox ของคุณ</h3>
+          <p>แต่งแต้มสีบล็อกให้ตัวละครเท่สุดๆ ไปเลย!</p>
+          
+          <div class="color-picker-grid">
+            <div class="color-picker-group">
+              <label>สีผิวหัวและแขนขา:</label>
+              <div class="colors-row" id="color-skin-options">
+                <button class="color-dot" style="background-color: #ffd8a8;" data-color="#ffd8a8"></button>
+                <button class="color-dot" style="background-color: #ffc078;" data-color="#ffc078"></button>
+                <button class="color-dot" style="background-color: #ffe066;" data-color="#ffe066"></button>
+                <button class="color-dot" style="background-color: #b2f2bb;" data-color="#b2f2bb"></button>
+                <button class="color-dot" style="background-color: #a5d8ff;" data-color="#a5d8ff"></button>
+                <button class="color-dot" style="background-color: #ff8787;" data-color="#ff8787"></button>
+              </div>
+            </div>
+
+            <div class="color-picker-group">
+              <label>สีตัวเสื้อเริ่มต้น (หากไม่สวมเสื้อร้านค้า):</label>
+              <div class="colors-row" id="color-torso-options">
+                <button class="color-dot" style="background-color: #1a1a1a;" data-color="#1a1a1a"></button>
+                <button class="color-dot" style="background-color: #d92525;" data-color="#d92525"></button>
+                <button class="color-dot" style="background-color: #1e63e6;" data-color="#1e63e6"></button>
+                <button class="color-dot" style="background-color: #1db954;" data-color="#1db954"></button>
+                <button class="color-dot" style="background-color: #f79f1f;" data-color="#f79f1f"></button>
+                <button class="color-dot" style="background-color: #833471;" data-color="#833471"></button>
+              </div>
+            </div>
+            
+            <div class="color-picker-group">
+              <label>สีขากางเกงเริ่มต้น (หากไม่สวมกางเกงร้านค้า):</label>
+              <div class="colors-row" id="color-legs-options">
+                <button class="color-dot" style="background-color: #1a1a1a;" data-color="#1a1a1a"></button>
+                <button class="color-dot" style="background-color: #555555;" data-color="#555555"></button>
+                <button class="color-dot" style="background-color: #3b5998;" data-color="#3b5998"></button>
+                <button class="color-dot" style="background-color: #e056fd;" data-color="#e056fd"></button>
+                <button class="color-dot" style="background-color: #ffffff; border: 1px solid #ccc;" data-color="#ffffff"></button>
+              </div>
+            </div>
+          </div>
+          
+          <div class="modal-actions">
+            <button class="btn-primary block-btn" id="btn-close-colors">ตกลงแต่งตัว ➔</button>
+          </div>
+        </div>
+      </div>
+
+    </section>
+  </main>
+
+  <footer class="game-footer">
+    <p>🎮 Roblox Multiplication Quest &copy; 2026 | สร้างสรรค์เพื่อความสนุกในการเรียนรู้นักเรียนประถม 🎒</p>
+  </footer>
+
+  <!-- Fixed Exit Fullscreen Button -->
+  <button id="btn-exit-fullscreen-fixed" title="ออกจากเกม">✕</button>
+
+  <!-- Include App Logic -->
+  <script src="app.js"></script>
+</body>
+</html>
