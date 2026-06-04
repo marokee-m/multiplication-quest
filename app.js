@@ -6997,10 +6997,9 @@ document.addEventListener("DOMContentLoaded", () => {
   renderAchievementsList();
   initSidebarAvatar();
 
-  // iOS Safari: prevent long-press context menu / copy popup on game elements
-  document.addEventListener('contextmenu',  e => e.preventDefault());
-  document.addEventListener('selectstart',  e => e.preventDefault());
-  document.addEventListener('touchforcechange', e => e.preventDefault(), { passive: false });
+  // iOS Safari: prevent right-click context menu only
+  // NOTE: do NOT block selectstart or touchforcechange — breaks iOS touch events!
+  document.addEventListener('contextmenu', e => { if (e.cancelable) e.preventDefault(); });
 
   // iOS Safari audio unlock — fire on first ANY user interaction
   const _iosAudioUnlock = () => {
