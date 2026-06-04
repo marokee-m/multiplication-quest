@@ -2,7 +2,7 @@
 <html lang="th">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
   <title>เกมสูตรคูณ | Roblox Multiplication Quest</title>
 
   <!-- ========== PWA / Home Screen Icons ========== -->
@@ -54,7 +54,7 @@
   <!-- ========== Three.js 3D WebGL Library ========== -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 
-  <link rel="stylesheet" href="style.css?v=2.1">
+  <link rel="stylesheet" href="style.css?v=2.5">
 </head>
 <body>
 
@@ -318,24 +318,27 @@
             
             <!-- A. 3D ACTION BOSS BATTLE INTERFACE -->
             <div id="gameplay-action" class="gameplay-subscreen" style="display: none;">
-              <!-- HP HUD — prominent bars -->
-              <div class="battle-hp-panels" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 8px; padding: 8px; background:rgba(0,0,0,0.55); border-radius:10px; border:1px solid rgba(255,255,255,0.12)">
-                <div class="boss-hp-container">
-                  <div class="boss-label" style="display:flex;justify-content:space-between;align-items:center;">
-                    <span>👾 บอสแม่ <span id="boss-table-val">4</span></span>
-                    <span style="font-size:0.8rem;color:var(--rbx-neon-cyan);">✅ <span id="boss-questions-counter">0 / 12</span></span>
+              <!-- HP HUD — ultra compact, 1 row -->
+              <div class="battle-hp-panels" style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:4px;padding:3px 6px;background:rgba(0,0,0,0.65);border-radius:6px;border:1px solid rgba(255,255,255,0.08)">
+                <!-- Boss HP — tiny row -->
+                <div class="boss-hp-container" style="padding:3px 6px;gap:3px;">
+                  <div class="boss-label" style="display:flex;justify-content:space-between;align-items:center;font-size:0.72rem;">
+                    <span>👾 แม่ <span id="boss-table-val">4</span> &nbsp; ✅ <span id="boss-questions-counter">0/12</span></span>
+                    <span id="boss-current-hp" style="color:var(--rbx-red-hover);font-weight:900;">240</span><span style="color:#888">/240</span>
                   </div>
-                  <div class="boss-hp-track">
-                    <div class="boss-hp-fill" id="boss-hp-fill-bar" style="width: 100%;"></div>
-                    <div class="boss-hp-text"><span id="boss-current-hp">500</span> / <span id="boss-max-hp">500</span> HP</div>
+                  <div class="boss-hp-track" style="height:10px;">
+                    <div class="boss-hp-fill" id="boss-hp-fill-bar" style="width:100%;"></div>
                   </div>
                 </div>
 
-                <div class="player-hp-container" style="background-color: #0e0f11; border: 2px solid var(--rbx-green); border-radius: 8px; padding: 10px; box-shadow: 0 0 10px rgba(0,176,111,0.2); display: flex; flex-direction: column; gap: 6px;">
-                  <div class="player-label" style="font-weight: 700; color: #00d385; font-size: 0.95rem;">👤 พลังชีวิตผู้เล่น (HP) | 💥 คอมโบ: <span id="action-combo-val" style="color: var(--rbx-neon-pink); font-weight: 900;">0</span>x</div>
-                  <div class="player-hp-track" style="height: 20px; background-color: #1a1a1a; border-radius: 10px; overflow: hidden; position: relative; border: 1px solid #333;">
-                    <div class="player-hp-fill" id="player-hp-fill-bar" style="height: 100%; background: linear-gradient(90deg, #00b06f 0%, #39ff14 100%); width: 100%; transition: width 0.2s ease-out;"></div>
-                    <div class="player-hp-text" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.8rem; color: #FFF; text-shadow: 1px 1px 2px #000;"><span id="player-current-hp">100</span> / 100 HP</div>
+                <!-- Player HP — tiny row -->
+                <div style="background:#0a0f11;border:1.5px solid var(--rbx-green);border-radius:6px;padding:3px 6px;display:flex;flex-direction:column;gap:3px;">
+                  <div style="font-size:0.72rem;color:#00d385;display:flex;justify-content:space-between;">
+                    <span>❤️ HP | 💥 <span id="action-combo-val" style="color:var(--rbx-neon-pink);font-weight:900;">0</span>x</span>
+                    <span><span id="player-current-hp" style="color:#fff;font-weight:700;">100</span>/100</span>
+                  </div>
+                  <div class="player-hp-track" style="height:10px;background:#111;border-radius:5px;overflow:hidden;position:relative;border:1px solid #333;">
+                    <div class="player-hp-fill" id="player-hp-fill-bar" style="height:100%;background:linear-gradient(90deg,#00b06f,#39ff14);width:100%;transition:width 0.2s;"></div>
                   </div>
                 </div>
               </div>
@@ -361,8 +364,8 @@
                   <span class="math-question" id="action-question">4 x 5 = ?</span>
                 </div>
 
-                <!-- Danger zone warning overlay -->
-                <div id="danger-zone-warning" style="display:none; position:absolute; top:12px; left:50%; transform:translateX(-50%); background:rgba(200,0,0,0.85); color:#fff; font-weight:900; padding:6px 18px; border-radius:8px; font-size:1rem; z-index:200; pointer-events:none;">⚠️ หลบวงแดง!</div>
+                <!-- Danger zone warning — bottom so it doesn't block question -->
+                <div id="danger-zone-warning" style="display:none; position:absolute; bottom:60px; left:50%; transform:translateX(-50%); background:rgba(200,0,0,0.88); color:#fff; font-weight:900; padding:5px 16px; border-radius:20px; font-size:0.88rem; z-index:200; pointer-events:none; white-space:nowrap;">⚠️ หลบวงแดง!</div>
 
                 <!-- On-Screen Virtual Joystick (touch devices support) -->
                 <div id="joystick-zone" class="joystick-wrapper">
@@ -431,9 +434,9 @@
               <div class="arena-3d-wrapper">
                 <div id="dressup-3d-viewport"></div>
 
-                <!-- Question banner -->
-                <div class="action-question-banner">
-                  <span class="math-question" id="dressup-question">5 × 9 = ?</span>
+                <!-- Question banner — compact top-left to not block mannequins -->
+                <div style="position:absolute;top:8px;left:10px;z-index:100;background:rgba(0,0,0,0.72);border:2px solid var(--rbx-neon-cyan);border-radius:10px;padding:5px 14px;pointer-events:none;">
+                  <span class="math-question" id="dressup-question" style="font-size:1.25rem;">5 × 9 = ?</span>
                 </div>
 
                 <!-- Joystick -->
@@ -576,6 +579,6 @@
   <button id="btn-exit-fullscreen-fixed" title="ออกจากเกม">✕</button>
 
   <!-- Include App Logic -->
-  <script src="app.js?v=2.1"></script>
+  <script src="app.js?v=2.5"></script>
 </body>
 </html>

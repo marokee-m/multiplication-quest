@@ -132,11 +132,41 @@ let beatIsPlaying = false;
 
 function initAudio() {
   if (!audioCtx) {
-    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    try {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    } catch(e) { return; }
   }
   if (audioCtx.state === 'suspended') {
-    audioCtx.resume();
+    audioCtx.resume().catch(() => {});
   }
+}
+
+// iOS Safari audio unlock — must happen inside a user gesture
+function unlockIOSAudio() {
+  if (audioCtx) {
+    if (audioCtx.state === 'suspended') {
+      audioCtx.resume().then(() => {
+        // Play a 1-sample silent buffer to fully unlock iOS
+        try {
+          const buf = audioCtx.createBuffer(1, 1, 22050);
+          const src = audioCtx.createBufferSource();
+          src.buffer = buf;
+          src.connect(audioCtx.destination);
+          src.start(0);
+        } catch(e) {}
+      }).catch(() => {});
+    }
+    return;
+  }
+  // First touch — create context
+  try {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const buf = audioCtx.createBuffer(1, 1, 22050);
+    const src = audioCtx.createBufferSource();
+    src.buffer = buf;
+    src.connect(audioCtx.destination);
+    src.start(0);
+  } catch(e) {}
 }
 
 // Helper to synthesize a simple sound
@@ -167,6 +197,7 @@ function playSynthSound(freq, duration, type = "sine", gainVal = 0.5) {
 // Roblox sound effects
 const sounds = {
   click: () => {
+    unlockIOSAudio(); // unlock iOS audio on every click
     playSynthSound(600, 0.08, "triangle", 0.4);
   },
   coin: () => {
@@ -862,6 +893,167 @@ function updateAvatarEquipment() {
 }
 
 // ==========================================================================
+// SHARED ARENA INPUT CONTROLLER (PC + Mobile — all 3 arena modes)
+// ==========================================================================
+let bossController = null, chillController = null, dressController = null;
+
+// Per-mode mutable camera state
+const bossCamState  = { yaw: 0, dist: 13, minD: 6, maxD: 22 };
+const chillCamState = { yaw: 0, dist: 13, minD: 6, maxD: 22 };
+const dressCamState = { yaw: 0, dist: 10, minD: 5, maxD: 18 };
+
+/**
+ * createArenaController — universal cross-platform input handler
+ * PC:     WASD move | right-click drag = camera | scroll = zoom | Space = jump
+ * Mobile: Virtual Joystick | Touch drag (outside joy) = camera | Pinch = zoom | UI button = jump
+ * Distinguishes joystick touch from camera drag by start-zone detection
+ */
+function createArenaController({ canvas, keys, camState, onJump, container, joystickId, jumpBtnId }) {
+  // --- PC ---
+  let pcDrag = false, pcLastX = 0;
+  const _ctx  = e => e.preventDefault();
+  const _mdn  = e => { if (e.button === 2) { pcDrag = true; pcLastX = e.clientX; } };
+  const _mmv  = e => { if (pcDrag) { camState.yaw += (e.clientX - pcLastX) * 0.007; pcLastX = e.clientX; } };
+  const _mup  = e => { if (e.button === 2) pcDrag = false; };
+  const _whl  = e => {
+    camState.dist = Math.max(camState.minD, Math.min(camState.maxD, camState.dist + e.deltaY * 0.02));
+    e.preventDefault();
+  };
+  const _kdn  = e => {
+    const k = e.key.toLowerCase(); keys[k] = true;
+    if (e.code === 'Space' && onJump) { onJump(); e.preventDefault(); }
+    if ([' ','w','a','s','d','arrowup','arrowdown','arrowleft','arrowright'].includes(k)) e.preventDefault();
+  };
+  const _kup  = e => { keys[e.key.toLowerCase()] = false; };
+
+  if (canvas) {
+    canvas.addEventListener('contextmenu', _ctx);
+    canvas.addEventListener('mousedown', _mdn);
+    canvas.addEventListener('wheel', _whl, { passive: false });
+  }
+  window.addEventListener('mousemove', _mmv);
+  window.addEventListener('mouseup', _mup);
+  window.addEventListener('keydown', _kdn);
+  window.addEventListener('keyup', _kup);
+
+  // --- Mobile/Touch ---
+  let joyId = null, camTId = null;
+  let joyCX = 0, joyCY = 0, camLastTX = 0, pinchD = 0;
+
+  const inJoystick = (x, y) => {
+    const el = joystickId ? document.getElementById(joystickId) : null;
+    if (!el) return false;
+    const r = el.getBoundingClientRect();
+    return Math.sqrt((x - r.left - r.width/2)**2 + (y - r.top - r.height/2)**2) < r.width/2 + 32;
+  };
+  const isUIBtn = (x, y) => {
+    const el = document.elementFromPoint(x, y);
+    return el && (el.tagName === 'BUTTON' || !!el.closest('button'));
+  };
+
+  const _ts = e => {
+    e.preventDefault();
+    for (const t of e.changedTouches) {
+      if (isUIBtn(t.clientX, t.clientY)) continue;
+      if (joyId === null && inJoystick(t.clientX, t.clientY)) {
+        joyId = t.identifier;
+        const el = joystickId ? document.getElementById(joystickId) : null;
+        if (el) { const r=el.getBoundingClientRect(); joyCX=r.left+r.width/2; joyCY=r.top+r.height/2; }
+      } else if (camTId === null) {
+        camTId = t.identifier; camLastTX = t.clientX;
+      }
+    }
+    if (e.touches.length === 2) {
+      const dx=e.touches[0].clientX-e.touches[1].clientX, dy=e.touches[0].clientY-e.touches[1].clientY;
+      pinchD = Math.sqrt(dx*dx+dy*dy);
+    }
+  };
+  const _tm = e => {
+    e.preventDefault();
+    if (e.touches.length === 2 && pinchD > 0) {
+      const dx=e.touches[0].clientX-e.touches[1].clientX, dy=e.touches[0].clientY-e.touches[1].clientY;
+      const d=Math.sqrt(dx*dx+dy*dy);
+      camState.dist = Math.max(camState.minD, Math.min(camState.maxD, camState.dist*(pinchD/d)));
+      pinchD=d; return;
+    }
+    for (const t of e.changedTouches) {
+      if (t.identifier === joyId) {
+        const maxR=42, dx=t.clientX-joyCX, dy=t.clientY-joyCY;
+        const dist=Math.sqrt(dx*dx+dy*dy), s=dist>maxR?maxR/dist:1;
+        const knob = joystickId ? document.getElementById(joystickId+'-knob') : null;
+        if (knob) knob.style.transform=`translate(calc(-50% + ${dx*s}px),calc(-50% + ${dy*s}px))`;
+        const nx=dx*s/maxR, ny=dy*s/maxR;
+        keys['a']=nx<-0.22; keys['d']=nx>0.22; keys['w']=ny<-0.22; keys['s']=ny>0.22;
+      } else if (t.identifier === camTId) {
+        camState.yaw += (t.clientX - camLastTX) * 0.008;
+        camLastTX = t.clientX;
+      }
+    }
+  };
+  const _te = e => {
+    for (const t of e.changedTouches) {
+      if (t.identifier === joyId) {
+        joyId = null;
+        const knob = joystickId ? document.getElementById(joystickId+'-knob') : null;
+        if (knob) knob.style.transform='translate(-50%,-50%)';
+        keys['a']=keys['d']=keys['w']=keys['s']=false;
+      }
+      if (t.identifier === camTId) camTId = null;
+    }
+  };
+
+  if (canvas) {
+    canvas.addEventListener('touchstart', _ts, { passive: false });
+    canvas.addEventListener('touchmove',  _tm, { passive: false });
+    canvas.addEventListener('touchend',   _te, { passive: false });
+    canvas.addEventListener('touchcancel',_te, { passive: false });
+  }
+
+  // Build mobile overlay if container provided and joystick doesn't exist yet
+  if (container && joystickId && !document.getElementById(joystickId)) {
+    const ov = document.createElement('div');
+    ov.className = 'arena-mobile-ctrl sd-overlay-el';
+    ov.style.cssText = 'position:absolute;bottom:0;left:0;right:0;display:flex;justify-content:space-between;align-items:flex-end;padding:10px 14px;pointer-events:none;z-index:50;';
+    ov.innerHTML = `
+      <div id="${joystickId}" class="sd-joystick-zone" style="pointer-events:all">
+        <div id="${joystickId}-knob" class="sd-joystick-knob"></div>
+      </div>
+      ${jumpBtnId
+        ? `<button id="${jumpBtnId}" class="sd-jump-btn" style="pointer-events:all">⬆<br>กระโดด</button>`
+        : '<div style="width:68px"></div>'}
+    `;
+    container.appendChild(ov);
+    if (jumpBtnId && onJump) {
+      setTimeout(() => {
+        const jb = document.getElementById(jumpBtnId);
+        if (jb) {
+          jb.addEventListener('touchstart', e => { e.stopPropagation(); onJump(); unlockIOSAudio(); }, { passive: true });
+          jb.addEventListener('mousedown',  e => { e.stopPropagation(); onJump(); });
+        }
+      }, 80);
+    }
+  }
+
+  return {
+    destroy() {
+      if (canvas) {
+        canvas.removeEventListener('contextmenu', _ctx);
+        canvas.removeEventListener('mousedown', _mdn);
+        canvas.removeEventListener('wheel', _whl);
+        canvas.removeEventListener('touchstart', _ts);
+        canvas.removeEventListener('touchmove', _tm);
+        canvas.removeEventListener('touchend', _te);
+        canvas.removeEventListener('touchcancel', _te);
+      }
+      window.removeEventListener('mousemove', _mmv);
+      window.removeEventListener('mouseup', _mup);
+      window.removeEventListener('keydown', _kdn);
+      window.removeEventListener('keyup', _kup);
+    }
+  };
+}
+
+// ==========================================================================
 // 0. Fullscreen Gameplay Manager
 // ==========================================================================
 function enterFullscreenGameplay(subscreenId) {
@@ -874,9 +1066,11 @@ function enterFullscreenGameplay(subscreenId) {
 }
 
 function exitFullscreenGameplay() {
-  document.querySelectorAll('.gameplay-fullscreen-mode').forEach(el => {
-    el.classList.remove('gameplay-fullscreen-mode');
-  });
+  document.querySelectorAll('.gameplay-fullscreen-mode').forEach(el => el.classList.remove('gameplay-fullscreen-mode'));
+  document.querySelectorAll('.training-ios-fullscreen').forEach(el => el.classList.remove('training-ios-fullscreen'));
+  document.body.classList.remove('training-body-lock');
+  try { if (document.fullscreenElement) document.exitFullscreen(); } catch(e) {}
+  try { if (screen.orientation?.unlock) screen.orientation.unlock(); } catch(e) {}
   const exitBtn = document.getElementById('btn-exit-fullscreen-fixed');
   if (exitBtn) exitBtn.classList.remove('visible');
 }
@@ -897,7 +1091,13 @@ function showSuccessOverlay3D(viewportContainerId, title, subtitle, onConfirm) {
       <div class="success-icon-big">🎉</div>
       <h2>${title}</h2>
       <p>${subtitle}</p>
-      <button class="btn-success-confirm" id="btn-success-ok">✅ ยืนยันสำเร็จ!</button>
+      <div class="success-details-box" style="background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.15);border-radius:10px;padding:10px 16px;margin:6px 0;text-align:left;font-size:0.85rem;color:var(--rbx-text-muted);line-height:1.8;">
+        <div>📚 แม่สูตรคูณ: <strong style="color:#fff">แม่ ${selectedArenaTable || '?'}</strong></div>
+        <div>✅ ตอบถูก: <strong style="color:var(--rbx-neon-green)">${bossQuestionsCorrect || scoreRobuxEarned/10 || '?'} ข้อ</strong></div>
+        <div>💰 รางวัล: <strong style="color:var(--rbx-yellow)">R$ ${scoreRobuxEarned || 0}</strong></div>
+        <div>❤️ HP เหลือ: <strong style="color:#ff6666">${playerHP || 0}%</strong></div>
+      </div>
+      <button class="btn-success-confirm" id="btn-success-ok">✅ ยืนยันและรับรางวัล!</button>
     </div>
   `;
   container.style.position = 'relative';
@@ -1802,21 +2002,57 @@ function handleSdKeyUp(e) {
   sdKeys3d[e.key.toLowerCase()] = false;
 }
 
+// Detect iOS Safari
+const isIOSSafari = () => {
+  const ua = navigator.userAgent;
+  return (/iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1))
+    && !window.MSStream;
+};
+
 // === Landscape fullscreen for training activities ===
 async function requestTrainingLandscape(wrapper) {
-  try {
-    if (wrapper && wrapper.requestFullscreen && !document.fullscreenElement) {
-      await wrapper.requestFullscreen({ navigationUI: 'hide' });
-    }
-  } catch(e) {}
-  try {
-    if (screen.orientation?.lock) await screen.orientation.lock('landscape');
-  } catch(e) {} // Not all browsers support this
+  if (!wrapper) return;
+
+  if (isIOSSafari()) {
+    // iOS doesn't support requestFullscreen — use CSS fixed overlay instead
+    wrapper.classList.add('training-ios-fullscreen');
+    document.body.classList.add('training-body-lock');
+
+    // Resize Three.js renderer to match new size after CSS applied
+    setTimeout(() => resizeTrainingRenderer(), 150);
+  } else {
+    // Native fullscreen for Chrome/Firefox/Android
+    try {
+      const fsCall = wrapper.requestFullscreen || wrapper.webkitRequestFullscreen || wrapper.mozRequestFullScreen;
+      if (fsCall && !document.fullscreenElement) await fsCall.call(wrapper, { navigationUI: 'hide' });
+    } catch(e) {}
+    try {
+      if (screen.orientation?.lock) await screen.orientation.lock('landscape');
+    } catch(e) {}
+  }
+}
+
+function resizeTrainingRenderer() {
+  // Resize the active Three.js renderer to match current container
+  if (sdRenderer && sdScene) {
+    const c = document.getElementById('sd-arena');
+    if (c) { sdRenderer.setSize(c.offsetWidth, c.offsetHeight); }
+  }
+  if (trampRenderer && trampScene) {
+    const c = document.getElementById('tramp-arena');
+    if (c) { trampRenderer.setSize(c.offsetWidth, c.offsetHeight); }
+  }
 }
 
 function exitTrainingFullscreen() {
   try { if (document.fullscreenElement) document.exitFullscreen(); } catch(e) {}
   try { if (screen.orientation?.unlock) screen.orientation.unlock(); } catch(e) {}
+
+  // Remove iOS CSS fullscreen
+  document.querySelectorAll('.training-ios-fullscreen').forEach(el => {
+    el.classList.remove('training-ios-fullscreen');
+  });
+  document.body.classList.remove('training-body-lock');
 }
 
 // === Build HUD overlay inside the SD arena ===
@@ -1865,9 +2101,18 @@ function buildSdOverlay() {
   `;
   arena.appendChild(mctrl);
 
-  // Beat style button events
+  // Exit button for step dance
+  const sdExitBtn = document.createElement('button');
+  sdExitBtn.className = 'training-exit-btn sd-overlay-el';
+  sdExitBtn.innerHTML = '✕';
+  sdExitBtn.title = 'ออกจากกิจกรรม';
+  sdExitBtn.addEventListener('click', () => { sounds.click(); stopStepDance3D(); exitTrainingFullscreen(); });
+  arena.appendChild(sdExitBtn);
+
+  // Beat style button events + iOS audio unlock on first tap
   topHud.querySelectorAll('.sd-beat-btn').forEach(btn => {
     btn.addEventListener('click', () => {
+      unlockIOSAudio(); // unlock audio on user gesture
       topHud.querySelectorAll('.sd-beat-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       activeBeatStyle = btn.getAttribute('data-beat');
@@ -2307,12 +2552,26 @@ function initTrampoline3D(tableNum) {
   tc.addEventListener('mouseup', () => { trampRightDrag = false; });
 
   trampKeys = {};
+  trampCamState.yaw = 0; trampCamState.dist = 11;
+
   window.addEventListener('keydown', handleTrampKey);
   window.addEventListener('keyup', e => { trampKeys[e.key.toLowerCase()] = false; });
 
   buildTrampOverlay();
-  setupTrampPCControls();
-  setupTrampTouchControls();
+
+  // Use shared arena controller (joystick + touch drag camera + pinch zoom + jump)
+  if (trampCtrl) trampCtrl.destroy();
+  trampCtrl = createArenaController({
+    canvas:    trampRenderer.domElement,
+    keys:      trampKeys,
+    camState:  trampCamState,
+    onJump:    () => { if (!trampJumping && trampPlayer) { trampVertVel = 0.45; trampJumping = true; } },
+    container: document.getElementById('tramp-arena'),
+    joystickId: 'tramp-ctrl-joy',
+    jumpBtnId:  'tramp-ctrl-jump'
+  });
+
+  trampRenderer.domElement.addEventListener('touchstart', () => unlockIOSAudio(), { once: true, passive: true });
   requestTrainingLandscape(document.getElementById('tramp-fullwrap'));
   animateTrampoline3D();
 }
@@ -2321,6 +2580,14 @@ function buildTrampOverlay() {
   const arena = document.getElementById('tramp-arena');
   if (!arena) return;
   arena.querySelectorAll('.sd-overlay-el').forEach(e => e.remove());
+
+  // Exit button
+  const exitBtn = document.createElement('button');
+  exitBtn.className = 'training-exit-btn sd-overlay-el';
+  exitBtn.innerHTML = '✕';
+  exitBtn.title = 'ออกจากกิจกรรม';
+  exitBtn.addEventListener('click', () => { sounds.click(); stopTrampoline3D(); exitTrainingFullscreen(); });
+  arena.appendChild(exitBtn);
 
   // Rotate hint
   const rh = document.createElement('div');
@@ -2368,7 +2635,9 @@ function buildTrampOverlay() {
 }
 
 // Tramp PC controls — right-click camera + scroll zoom
-let trampCamYaw2 = 0, trampIsRightDrag = false, trampRightDragLast = { x: 0, y: 0 };
+let trampCtrl = null; // shared controller instance for trampoline
+const trampCamState = { yaw: 0, dist: 11, minD: 5, maxD: 20 };
+let trampCamYaw2 = 0, trampIsRightDrag = false, trampRightDragLast = { x: 0, y: 0 }; // legacy (kept for compat)
 let trampJoyTouchId = null, trampCamTouchId2 = null, trampCamTouchLastX2 = 0;
 let trampPinchDist = 0;
 
@@ -2658,12 +2927,13 @@ function animateTrampoline3D() {
 
   // Camera follow with orbit
   if (trampPlayer && trampCamera) {
-    const d = 11, h = 9;
-    trampCamera.position.set(
-      trampPlayer.position.x + Math.sin(trampCamYaw) * d,
-      trampPlayer.position.y + h,
-      trampPlayer.position.z + Math.cos(trampCamYaw) * d
-    );
+    // Smooth orbit camera using shared trampCamState
+    const tTX = trampPlayer.position.x + Math.sin(trampCamState.yaw) * trampCamState.dist;
+    const tTY = trampPlayer.position.y + 9;
+    const tTZ = trampPlayer.position.z + Math.cos(trampCamState.yaw) * trampCamState.dist;
+    trampCamera.position.x += (tTX - trampCamera.position.x) * 0.08;
+    trampCamera.position.y += (tTY - trampCamera.position.y) * 0.08;
+    trampCamera.position.z += (tTZ - trampCamera.position.z) * 0.08;
     trampCamera.lookAt(trampPlayer.position.x, trampPlayer.position.y + 1, trampPlayer.position.z);
   }
 
@@ -2757,8 +3027,8 @@ function showTrampBlockViz(tableNum, mult) {
 function stopTrampoline3D() {
   if (trampAnimId) { cancelAnimationFrame(trampAnimId); trampAnimId = null; }
   window.removeEventListener('keydown', handleTrampKey);
+  if (trampCtrl) { trampCtrl.destroy(); trampCtrl = null; }
   exitTrainingFullscreen();
-  trampIsRightDrag=false; trampJoyTouchId=null; trampCamTouchId2=null;
   if (trampRenderer) { try { trampRenderer.dispose(); } catch(e) {} trampRenderer = null; }
   trampScene = null;
 }
@@ -3035,36 +3305,26 @@ function initThreeJS() {
   // Resize listener
   window.addEventListener("resize", onWindowResize3D);
 
-  // Input Listeners
-  window.addEventListener("keydown", handleKeyDown3D);
-  window.addEventListener("keyup", handleKeyUp3D);
-  setupJoystickEvents();
+  // Remove old listeners from previous sessions
+  if (bossController) bossController.destroy();
 
-  // Jump on Spacebar
-  window.addEventListener("keydown", handleJumpKey3D);
-
-  // Camera orbit on right-click drag
-  cameraYaw = 0;
-  const canvas3d = renderer3d.domElement;
-  canvas3d.addEventListener('contextmenu', e => e.preventDefault());
-  canvas3d.addEventListener('mousedown', e => { if (e.button === 2) { isRightDrag = true; rightDragStartX = e.clientX; } });
-  canvas3d.addEventListener('mousemove', e => {
-    if (isRightDrag) { cameraYaw += (e.clientX - rightDragStartX) * 0.012; rightDragStartX = e.clientX; }
-  });
-  canvas3d.addEventListener('mouseup', () => { isRightDrag = false; });
-  canvas3d.addEventListener('touchstart', e => {
-    if (e.touches.length === 2) { isRightDrag = true; rightDragStartX = (e.touches[0].clientX + e.touches[1].clientX) / 2; }
-  }, { passive: true });
-  canvas3d.addEventListener('touchmove', e => {
-    if (isRightDrag && e.touches.length === 2) {
-      const cx = (e.touches[0].clientX + e.touches[1].clientX) / 2;
-      cameraYaw += (cx - rightDragStartX) * 0.012; rightDragStartX = cx;
-    }
-  }, { passive: true });
-  canvas3d.addEventListener('touchend', () => { isRightDrag = false; });
-
-  // Reset jump
+  bossCamState.yaw = 0; bossCamState.dist = 13;
   playerVertVelocity = 0; playerIsJumping = false;
+
+  const arenaViewport = document.getElementById("arena-3d-viewport");
+
+  bossController = createArenaController({
+    canvas:  renderer3d.domElement,
+    keys:    keysPressed,
+    camState: bossCamState,
+    onJump:  () => { if (!playerIsJumping && player3dGroup) { playerVertVelocity = JUMP_FORCE; playerIsJumping = true; } },
+    container: arenaViewport,
+    joystickId: 'boss-joystick',
+    jumpBtnId:  'boss-jump-btn'
+  });
+
+  // iOS: unlock audio on first touch in arena
+  renderer3d.domElement.addEventListener('touchstart', () => unlockIOSAudio(), { once: true, passive: true });
 
   threeEngineActive = true;
   animate3DScene();
@@ -3785,15 +4045,14 @@ function animate3DScene() {
     }
   }
 
-  // Smooth camera follow (lerp toward target)
-  const camDist = 13.0, camH = 11.5;
-  const camTargetX = player3dGroup.position.x + Math.sin(cameraYaw) * camDist;
-  const camTargetY = player3dGroup.position.y + camH;
-  const camTargetZ = player3dGroup.position.z + Math.cos(cameraYaw) * camDist;
-  const lerpF = 0.08; // smooth follow factor
-  camera3d.position.x += (camTargetX - camera3d.position.x) * lerpF;
-  camera3d.position.y += (camTargetY - camera3d.position.y) * lerpF;
-  camera3d.position.z += (camTargetZ - camera3d.position.z) * lerpF;
+  // Smooth orbit camera using bossCamState
+  const camH = 11.5;
+  const camTX = player3dGroup.position.x + Math.sin(bossCamState.yaw) * bossCamState.dist;
+  const camTY = player3dGroup.position.y + camH;
+  const camTZ = player3dGroup.position.z + Math.cos(bossCamState.yaw) * bossCamState.dist;
+  camera3d.position.x += (camTX - camera3d.position.x) * 0.08;
+  camera3d.position.y += (camTY - camera3d.position.y) * 0.08;
+  camera3d.position.z += (camTZ - camera3d.position.z) * 0.08;
   camera3d.lookAt(player3dGroup.position.x, player3dGroup.position.y + 1.2, player3dGroup.position.z);
 
   // Golem Boss floating bobbing & rotating to face player
@@ -3851,9 +4110,11 @@ function handleAnswerSelect3D(chosenVal, hitPortalGroup) {
     bossQuestionsCorrect++;
     document.getElementById("action-combo-val").innerText = comboCount;
 
-    // Damage scales with questions answered (each correct = 1/12 of boss HP)
     const totalDmg = Math.round(maxBossHP / BOSS_QUESTIONS_REQUIRED) * comboCount;
     triggerPlayerAttackAnimation(totalDmg);
+    triggerBossHitEffect();
+    // TTS: announce the multiplication fact
+    speakThai(`${currentQuestionData.table} คูณ ${currentQuestionData.mult} เท่ากับ ${currentQuestionData.ans} ถูกต้อง`);
     updateBossQuestionsUI(); // also updates HP bar
 
     scoreRobuxEarned += 10;
@@ -3864,8 +4125,9 @@ function handleAnswerSelect3D(chosenVal, hitPortalGroup) {
     comboCount = 0; // reset combo
     document.getElementById("action-combo-val").innerText = comboCount;
 
-    // Boss counters player (wrong answer penalty: -10 HP)
     triggerBossAttackAnimation();
+    triggerPlayerDamageEffect();
+    speakThai('ผิดแล้ว หลบวงแดงให้ทัน');
     playerHP = Math.max(0, playerHP - 10);
     updatePlayerHPUI();
 
@@ -4020,9 +4282,55 @@ function startBossAttackLoop() {
   }, 4000);
 }
 
-// Boss death + player victory animation
+// === Boss Attack Effect (correct answer) ===
+function triggerBossHitEffect() {
+  if (!boss3dGroup || !scene3d) return;
+  // Shockwave ring expanding from boss
+  const geo = new THREE.RingGeometry(0.5, 1.0, 24);
+  const mat = new THREE.MeshBasicMaterial({ color: 0xffcc00, side: THREE.DoubleSide, transparent: true, opacity: 0.9 });
+  const ring = new THREE.Mesh(geo, mat);
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.copy(boss3dGroup.position);
+  ring.position.y = 0.1;
+  scene3d.add(ring);
+  let f = 0;
+  const ri = setInterval(() => {
+    f++; ring.scale.setScalar(1 + f * 0.25);
+    ring.material.opacity = Math.max(0, 0.9 - f * 0.06);
+    if (f >= 15) { clearInterval(ri); scene3d.remove(ring); }
+  }, 20);
+  // Boss flash red
+  const bossTorso = boss3dGroup.getObjectByName("boss_torso");
+  if (bossTorso?.material) {
+    bossTorso.material.emissive.setHex(0xff2200);
+    bossTorso.material.emissiveIntensity = 1.5;
+    setTimeout(() => { if (bossTorso.material) { bossTorso.material.emissive.setHex(0x000000); bossTorso.material.emissiveIntensity = 0; } }, 250);
+  }
+}
+
+// === Player Damage Effect (wrong answer) ===
+function triggerPlayerDamageEffect() {
+  if (!player3dGroup) return;
+  // Red screen flash overlay
+  const vp = document.getElementById('arena-3d-viewport');
+  if (vp) {
+    const flash = document.createElement('div');
+    flash.style.cssText = 'position:absolute;inset:0;background:rgba(255,0,0,0.4);z-index:100;pointer-events:none;transition:opacity 0.4s;';
+    vp.appendChild(flash);
+    setTimeout(() => { flash.style.opacity = '0'; setTimeout(() => flash.remove(), 400); }, 80);
+  }
+  // Player knockback blink
+  const torso = player3dGroup.getObjectByName("torso");
+  if (torso?.material) {
+    const orig = new THREE.Color().copy(torso.material.color);
+    torso.material.color.setHex(0xff2222);
+    setTimeout(() => { if (torso.material) torso.material.color.copy(orig); }, 300);
+  }
+}
+
+// Boss death + player victory — KEEP boss corpse in scene
 function playBossDeathAnimation() {
-  threeEngineActive = false; // stop main loop
+  threeEngineActive = false;
   stopBossAttackLoop();
   sounds.win();
 
@@ -4030,21 +4338,54 @@ function playBossDeathAnimation() {
   const bossDeathInt = setInterval(() => {
     frame++;
     if (boss3dGroup) {
-      boss3dGroup.rotation.z = (frame / 35) * (Math.PI / 2);
-      boss3dGroup.position.y -= 0.06;
-      boss3dGroup.scale.set(
-        Math.max(0.01, 1 - frame / 55),
-        Math.max(0.01, 1 - frame / 55),
-        Math.max(0.01, 1 - frame / 55)
-      );
+      // Fall sideways and sink — but remain as corpse
+      boss3dGroup.rotation.z = Math.min(Math.PI / 2, (frame / 35) * (Math.PI / 2));
+      boss3dGroup.position.y = Math.max(-1.5, boss3dGroup.position.y - 0.04);
     }
-    if (frame >= 55) {
+    if (frame >= 50) {
       clearInterval(bossDeathInt);
-      if (boss3dGroup && scene3d) scene3d.remove(boss3dGroup);
+      // Boss stays as corpse (not removed from scene!)
+      // Dim it slightly to show it's dead
+      if (boss3dGroup) {
+        boss3dGroup.traverse(child => {
+          if (child.isMesh && child.material) {
+            child.material = child.material.clone();
+            child.material.color.multiplyScalar(0.3);
+            child.material.emissive?.setHex(0x000000);
+          }
+        });
+      }
+      // Smoke effect from corpse
+      spawnBossDeathSmoke();
       playPlayerVictoryDance3D();
     }
     if (scene3d && renderer3d && camera3d) renderer3d.render(scene3d, camera3d);
   }, 25);
+}
+
+function spawnBossDeathSmoke() {
+  if (!scene3d || !boss3dGroup) return;
+  for (let i = 0; i < 8; i++) {
+    setTimeout(() => {
+      if (!scene3d) return;
+      const smoke = new THREE.Mesh(
+        new THREE.SphereGeometry(0.5 + Math.random(), 6, 6),
+        new THREE.MeshBasicMaterial({ color: 0x666666, transparent: true, opacity: 0.7 })
+      );
+      smoke.position.set(
+        boss3dGroup.position.x + (Math.random()-0.5)*3,
+        Math.random()*2,
+        boss3dGroup.position.z + (Math.random()-0.5)*3
+      );
+      scene3d.add(smoke);
+      let sf = 0;
+      const si = setInterval(() => {
+        sf++; smoke.position.y += 0.05; smoke.material.opacity = Math.max(0, 0.7-sf*0.04);
+        smoke.scale.setScalar(1+sf*0.05);
+        if (sf >= 20) { clearInterval(si); scene3d?.remove(smoke); }
+      }, 40);
+    }, i * 120);
+  }
 }
 
 function playPlayerVictoryDance3D() {
@@ -4233,12 +4574,14 @@ function updateBossHPUI() {
 function nextActionQuestion3D() {
   currentQuestionIndex++;
   currentQuestionData = generateMathQuestion(selectedArenaTable);
-  
-  // Update banner text
-  document.getElementById("action-question").innerText = `${currentQuestionData.table} x ${currentQuestionData.mult} = ?`;
 
-  // Draw 3D portal choice labels
+  document.getElementById("action-question").innerText = `${currentQuestionData.table} x ${currentQuestionData.mult} = ?`;
   updatePortalBillboardTexts(currentQuestionData.opts);
+
+  // TTS: read the question aloud
+  setTimeout(() => {
+    speakThai(`${currentQuestionData.table} คูณ ${currentQuestionData.mult} เท่ากับเท่าไร`);
+  }, 200);
 }
 
 function onWindowResize3D() {
@@ -4251,20 +4594,88 @@ function onWindowResize3D() {
 
 function endGameplaySession3D(success) {
   if (success && boss3dGroup) {
-    // Trigger death + victory animation, real end happens in callback
     playBossDeathAnimation();
     return;
   }
-  // Player died — just end
+  // Player HP = 0 → death animation
+  if (!success) {
+    playPlayerDeathAnimation3D();
+    return;
+  }
+  // Cleanup
   threeEngineActive = false;
   stopBossAttackLoop();
-  window.removeEventListener("keydown", handleJumpKey3D);
+  if (bossController) { bossController.destroy(); bossController = null; }
   if (animationFrameId) { cancelAnimationFrame(animationFrameId); animationFrameId = null; }
   window.removeEventListener("resize", onWindowResize3D);
-  window.removeEventListener("keydown", handleKeyDown3D);
-  window.removeEventListener("keyup", handleKeyUp3D);
   exitFullscreenGameplay();
   endGameplaySession(success);
+}
+
+function playPlayerDeathAnimation3D() {
+  threeEngineActive = false;
+  stopBossAttackLoop();
+  sounds.oof();
+  speakThai('หมดแรงแล้ว สู้ต่อไปนะ');
+
+  let frame = 0;
+  const deathInt = setInterval(() => {
+    frame++;
+    if (player3dGroup) {
+      player3dGroup.rotation.z = Math.min(Math.PI / 2, (frame / 30) * (Math.PI / 2));
+      player3dGroup.position.y = Math.max(-0.5, player3dGroup.position.y - 0.03);
+      // Fade to gray
+      player3dGroup.traverse(child => {
+        if (child.isMesh && child.material && frame === 15) {
+          child.material = child.material.clone();
+          child.material.color.lerp(new THREE.Color(0x555555), 0.5);
+        }
+      });
+    }
+    if (scene3d && renderer3d && camera3d) renderer3d.render(scene3d, camera3d);
+
+    if (frame >= 45) {
+      clearInterval(deathInt);
+      showPlayerDeathOverlay();
+    }
+  }, 25);
+}
+
+function showPlayerDeathOverlay() {
+  const vp = document.getElementById('arena-3d-viewport');
+  if (!vp) return;
+  vp.style.position = 'relative';
+  const ov = document.createElement('div');
+  ov.className = 'success-overlay-3d';
+  ov.innerHTML = `
+    <div class="success-modal-3d" style="border-color:#d82626;box-shadow:0 0 40px rgba(216,38,38,0.5);">
+      <div class="success-icon-big">💀</div>
+      <h2 style="color:#ff4444;">อวาตาร์หมดแรง!</h2>
+      <p style="color:var(--rbx-text-muted);">HP หมดแล้ว แต่อย่าท้อนะ!</p>
+      <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
+        <button class="btn-success-confirm" style="background:linear-gradient(135deg,var(--rbx-red),#ff5252);" id="btn-retry-boss">⚔️ ลองใหม่</button>
+        <button class="btn-success-confirm" style="background:rgba(40,40,40,0.8);color:#aaa;border:1px solid #555;" id="btn-exit-dead">🏠 หน้าหลัก</button>
+      </div>
+    </div>
+  `;
+  vp.appendChild(ov);
+
+  document.getElementById('btn-retry-boss')?.addEventListener('click', () => {
+    ov.remove();
+    // Cleanup and restart
+    if (bossController) { bossController.destroy(); bossController = null; }
+    if (animationFrameId) { cancelAnimationFrame(animationFrameId); animationFrameId = null; }
+    window.removeEventListener("resize", onWindowResize3D);
+    startPathGameplay('action'); // restart
+  });
+  document.getElementById('btn-exit-dead')?.addEventListener('click', () => {
+    ov.remove();
+    if (bossController) { bossController.destroy(); bossController = null; }
+    if (animationFrameId) { cancelAnimationFrame(animationFrameId); animationFrameId = null; }
+    window.removeEventListener("resize", onWindowResize3D);
+    exitFullscreenGameplay();
+    endGameplaySession(false);
+  });
 }
 
 // ==========================================================================
@@ -4369,8 +4780,18 @@ function startPathGameplay(path) {
   document.getElementById("gameplay-chill").style.display = "none";
   document.getElementById("gameplay-dressup").style.display = "none";
 
-  // Enter fullscreen for all gameplay paths
-  setTimeout(() => enterFullscreenGameplay(`gameplay-${path}`), 80);
+  // Unlock iOS audio immediately (user gesture context)
+  unlockIOSAudio();
+
+  // Enter fullscreen — CSS approach works on iOS
+  setTimeout(() => {
+    enterFullscreenGameplay(`gameplay-${path}`);
+    // iOS: also try CSS landscape expand
+    if (isIOSSafari()) {
+      const el = document.getElementById(`gameplay-${path}`);
+      if (el) { el.classList.add('training-ios-fullscreen'); document.body.classList.add('training-body-lock'); }
+    }
+  }, 80);
 
   if (path === "action") {
     document.getElementById("gameplay-action").style.display = "block";
@@ -4379,8 +4800,8 @@ function startPathGameplay(path) {
     playerHP = 100;
     updatePlayerHPUI();
 
-    // Boss HP scales with table difficulty
-    maxBossHP = selectedArenaTable * 100;
+    // Fixed 240 HP — consistent with 12 correct answers × 20 HP each
+    maxBossHP = 240;
     currentBossHP = maxBossHP;
     document.getElementById("boss-max-hp").innerText = maxBossHP;
     updateBossHPUI();
@@ -4986,13 +5407,23 @@ function initChillFarm3D() {
   chillFarmAnswerProcessing = false;
   chillFarmGems = 0;
   activeTreeIdx = -1;
+  chillCamState.yaw = 0; chillCamState.dist = 13;
+  farmPetCompanions = []; // reset pets
 
   const banner = document.getElementById("chill-question-banner");
   if (banner) banner.style.display = "none";
 
-  window.addEventListener("keydown", handleChillFarmKey_down);
-  window.addEventListener("keyup", handleChillFarmKey_up);
-  setupChillFarmJoystick();
+  if (chillController) chillController.destroy();
+  chillController = createArenaController({
+    canvas: chillFarmRenderer.domElement,
+    keys: chillFarmKeys,
+    camState: chillCamState,
+    onJump: null, // no jump in chill farm (farm mode)
+    container: document.getElementById('chill-3d-viewport'),
+    joystickId: 'chill-joystick',
+    jumpBtnId: null
+  });
+  chillFarmRenderer.domElement.addEventListener('touchstart', () => unlockIOSAudio(), { once: true, passive: true });
 
   chillFarmClock = new THREE.Clock();
   animateChillFarm3D();
@@ -5140,6 +5571,17 @@ function growFarmTree3D(plotIdx) {
   chillFarmGems += 5;
   document.getElementById("chill-robux-earned").innerText = chillFarmGems;
   sounds.coin();
+
+  // TTS announce correct answer
+  speakThai(`${chillFarmCurrentQ.table} คูณ ${chillFarmCurrentQ.mult} เท่ากับ ${chillFarmCurrentQ.ans} ถูกต้อง เยี่ยมมาก`);
+
+  // Add pet companion when a tree reaches full grown (stage 3)
+  if (plot.stage >= 3) {
+    const grownCount = farmPlots.filter(p => p.stage >= 3).length;
+    if (grownCount > farmPetCompanions.length) {
+      setTimeout(() => addFarmPet(farmPetCompanions.length), 800);
+    }
+  }
 }
 
 function spawnFarmGems3D(x, z) {
@@ -5382,17 +5824,16 @@ function animateChillFarm3D() {
     }
   });
 
-  // Portals spin
   chillFarmPortals.forEach(p => { p.rotation.y += 0.022; });
+  updateFarmPets(time);
 
-  // Smooth camera (lerp)
-  const cfTX = chillFarmPlayer.position.x;
+  // Orbit camera with yaw + pinch zoom
+  const cfTX = chillFarmPlayer.position.x + Math.sin(chillCamState.yaw) * chillCamState.dist;
   const cfTY = chillFarmPlayer.position.y + 13;
-  const cfTZ = chillFarmPlayer.position.z + 11;
-  const cfLF = 0.08;
-  chillFarmCamera.position.x += (cfTX - chillFarmCamera.position.x) * cfLF;
-  chillFarmCamera.position.y += (cfTY - chillFarmCamera.position.y) * cfLF;
-  chillFarmCamera.position.z += (cfTZ - chillFarmCamera.position.z) * cfLF;
+  const cfTZ = chillFarmPlayer.position.z + Math.cos(chillCamState.yaw) * chillCamState.dist;
+  chillFarmCamera.position.x += (cfTX - chillFarmCamera.position.x) * 0.08;
+  chillFarmCamera.position.y += (cfTY - chillFarmCamera.position.y) * 0.08;
+  chillFarmCamera.position.z += (cfTZ - chillFarmCamera.position.z) * 0.08;
   chillFarmCamera.lookAt(chillFarmPlayer.position.x, chillFarmPlayer.position.y + 1, chillFarmPlayer.position.z);
 
   chillFarmRenderer.render(chillFarmScene, chillFarmCamera);
@@ -5497,7 +5938,7 @@ function handleChillFarmAnswer3D(chosenVal) {
     }, 1200);
   } else {
     sounds.oof();
-    // No penalty — just flash and try again
+    speakThai('ผิดแล้ว ลองใหม่นะ');
     const torso = chillFarmPlayer.getObjectByName("sp_torso");
     if (torso && torso.material) {
       const orig = new THREE.Color().copy(torso.material.color);
@@ -5544,10 +5985,104 @@ function playFarmCompletionDance() {
   }, 25);
 }
 
+// === Chill Farm pet companions ===
+let farmPetCompanions = [];
+const FARM_PET_DEFS = [
+  { type: 'cat',      color: 0xff9800, accent: 0xe65100, radius: 2.2, speed: 0.022 },
+  { type: 'bird',     color: 0x2196f3, accent: 0x1a237e, radius: 2.9, speed: 0.028 },
+  { type: 'dog',      color: 0x795548, accent: 0x4e342e, radius: 3.6, speed: 0.018 },
+  { type: 'elephant', color: 0x9e9e9e, accent: 0x616161, radius: 4.4, speed: 0.015 }
+];
+
+function addFarmPet(petIdx) {
+  if (!chillFarmScene || farmPetCompanions.length > petIdx) return;
+  const def = FARM_PET_DEFS[petIdx];
+  const g = new THREE.Group();
+  const bMat = new THREE.MeshStandardMaterial({ color: def.color, roughness: 0.8 });
+  const aMat = new THREE.MeshStandardMaterial({ color: def.accent, roughness: 0.8 });
+  const eyeMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
+
+  // Body
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.38, 0.55), bMat);
+  body.position.y = 0.32; g.add(body);
+  // Head
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.3, 0.3), bMat);
+  head.position.set(0, 0.58, 0.28); g.add(head);
+  // Eyes
+  [-0.08, 0.08].forEach(ex => {
+    const eye = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.04), eyeMat);
+    eye.position.set(ex, 0.58, 0.44); g.add(eye);
+  });
+
+  if (def.type === 'cat') {
+    // Pointy ears
+    const earL = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.12, 0.06), bMat);
+    earL.position.set(-0.1, 0.72, 0.28); g.add(earL);
+    const earR = earL.clone(); earR.position.x = 0.1; g.add(earR);
+    // Tail
+    const tail = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.28, 0.06), bMat);
+    tail.position.set(0, 0.42, -0.32); tail.rotation.x = 0.5; g.add(tail);
+  }
+  if (def.type === 'bird') {
+    // Wings
+    [-1, 1].forEach(s => {
+      const wing = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.06, 0.22), aMat);
+      wing.position.set(s * 0.3, 0.38, 0); g.add(wing);
+    });
+    // Beak
+    const beak = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 0.12), new THREE.MeshStandardMaterial({ color: 0xffd700 }));
+    beak.position.set(0, 0.55, 0.43); g.add(beak);
+  }
+  if (def.type === 'dog') {
+    // Floppy ears
+    [-1, 1].forEach(s => {
+      const ear = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.18, 0.06), aMat);
+      ear.position.set(s * 0.18, 0.54, 0.25); g.add(ear);
+    });
+    const tail = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.2, 0.06), bMat);
+    tail.position.set(0.1, 0.44, -0.32); tail.rotation.x = 0.8; g.add(tail);
+  }
+  if (def.type === 'elephant') {
+    // Trunk
+    const trunk = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.22, 0.1), bMat);
+    trunk.position.set(0, 0.5, 0.4); g.add(trunk);
+    // Big ears
+    [-1, 1].forEach(s => {
+      const ear = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.3, 0.35), aMat);
+      ear.position.set(s * 0.28, 0.52, 0.25); g.add(ear);
+    });
+  }
+
+  const startAngle = petIdx * (Math.PI * 0.5);
+  g.position.set(
+    chillFarmPlayer.position.x + Math.cos(startAngle) * def.radius,
+    0.32,
+    chillFarmPlayer.position.z + Math.sin(startAngle) * def.radius
+  );
+  chillFarmScene.add(g);
+  farmPetCompanions.push({ mesh: g, angle: startAngle, speed: def.speed, radius: def.radius, type: def.type });
+
+  // Announce
+  speakThai(`${['แมว','นก','สุนัข','ช้าง'][petIdx]}มาร่วมด้วย!`);
+}
+
+function updateFarmPets(time) {
+  farmPetCompanions.forEach((p, i) => {
+    p.angle += p.speed;
+    if (chillFarmPlayer) {
+      p.mesh.position.x = chillFarmPlayer.position.x + Math.cos(p.angle) * p.radius;
+      p.mesh.position.z = chillFarmPlayer.position.z + Math.sin(p.angle) * p.radius;
+      p.mesh.position.y = 0.32 + Math.abs(Math.sin(time * 3 + i)) * 0.08;
+      p.mesh.rotation.y = -p.angle + Math.PI / 2;
+    }
+  });
+}
+
 function stopChillFarm3D() {
   if (chillFarmAnimId) { cancelAnimationFrame(chillFarmAnimId); chillFarmAnimId = null; }
   window.removeEventListener("keydown", handleChillFarmKey_down);
   window.removeEventListener("keyup", handleChillFarmKey_up);
+  if (chillController) { chillController.destroy(); chillController = null; }
   chillFarmScene = null;
 }
 
@@ -5609,10 +6144,19 @@ function initDressupRunway3D() {
   dressupAnswerProcessing3d = false;
   dressupCombo3d = 0;
   dressupWalkingFinale = false;
+  dressCamState.yaw = 0; dressCamState.dist = 10;
 
-  window.addEventListener("keydown", handleDressupKey3d_down);
-  window.addEventListener("keyup", handleDressupKey3d_up);
-  setupDressupJoystick3D();
+  if (dressController) dressController.destroy();
+  dressController = createArenaController({
+    canvas: dressupRenderer3d.domElement,
+    keys: dressupKeys3d,
+    camState: dressCamState,
+    onJump: null,
+    container: document.getElementById('dressup-3d-viewport'),
+    joystickId: 'dress-joystick',
+    jumpBtnId: null
+  });
+  dressupRenderer3d.domElement.addEventListener('touchstart', () => unlockIOSAudio(), { once: true, passive: true });
 
   // Set initial camera position before first render
   dressupCamera3d.position.set(0, 12, 18);
@@ -5627,9 +6171,9 @@ function handleDressupKey3d_down(e) { dressupKeys3d[e.key.toLowerCase()] = true;
 function handleDressupKey3d_up(e)   { dressupKeys3d[e.key.toLowerCase()] = false; }
 
 function buildRunwayStage3D() {
-  const RL = 160; // runway length — long for continuous run
-  const RC = -(RL / 2) + 10; // runway center Z
-  const RW = 8; // runway WIDTH — wider for easier navigation
+  const RL = 1000; // 1000 units — covers ~100 wrong answers before ending
+  const RC = -(RL / 2) + 10;
+  const RW = 11; // wider runway
 
   // Main runway
   const runway = new THREE.Mesh(
@@ -5650,30 +6194,30 @@ function buildRunwayStage3D() {
     dressupScene3d.add(edge);
   });
 
-  // Neon runway lights — full length
+  // Neon runway lights — every 8 units to keep geometry count low
   const neonCols = [0xff00ff, 0x00ffff, 0xff6600, 0x00ff88];
   [-1, 1].forEach(side => {
-    for (let z = 10; z > -RL + 5; z -= 3) {
+    for (let z = 10; z > -RL + 5; z -= 8) {
       const light = new THREE.Mesh(
-        new THREE.BoxGeometry(0.28, 0.18, 0.28),
-        new THREE.MeshBasicMaterial({ color: neonCols[Math.abs(Math.floor(z / 3)) % 4] })
+        new THREE.BoxGeometry(0.32, 0.2, 0.32),
+        new THREE.MeshBasicMaterial({ color: neonCols[Math.abs(Math.floor(z / 8)) % 4] })
       );
-      light.position.set(side * 2.5, 0.18, z);
+      light.position.set(side * (RW / 2 - 0.1), 0.2, z);
       dressupScene3d.add(light);
     }
   });
 
-  // Audience — repeat sections every 20 units down the runway
-  for (let seg = 0; seg < 8; seg++) {
-    const segZ = -seg * 18;
+  // Audience every 25 units × 40 segments = 1000 units (fewer objects per segment)
+  for (let seg = 0; seg < 40; seg++) {
+    const segZ = -seg * 25; // 25 unit spacing × 40 = 1000 units
     [-1, 1].forEach(side => {
-      for (let row = 0; row < 3; row++) {
-        for (let seat = 0; seat < 6; seat++) {
+      for (let row = 0; row < 2; row++) { // 2 rows only (performance)
+        for (let seat = 0; seat < 5; seat++) {
           const s = new THREE.Mesh(
-            new THREE.BoxGeometry(0.65, 0.55, 0.65),
+            new THREE.BoxGeometry(0.7, 0.55, 0.7),
             new THREE.MeshStandardMaterial({ color: [0xd32f2f, 0x1976d2, 0x388e3c][row % 3] })
           );
-          s.position.set(side * (4.5 + row * 1.3), row * 0.45 + 0.3, segZ - seat * 2.4);
+          s.position.set(side * (RW/2 + 1.2 + row * 1.4), row * 0.45 + 0.3, segZ - seat * 3.5);
           dressupScene3d.add(s);
         }
       }
@@ -5756,14 +6300,14 @@ function nextDressupRunwayQ3D() {
   if (!opts.includes(q.ans)) opts[0] = q.ans;
   opts.sort(() => Math.random() - 0.5);
 
-  // Spawn mannequins AHEAD — within runway width so player can always reach
+  // Spawn mannequins very far ahead — 3x original distance
   const playerZ = dressupPlayer3d ? dressupPlayer3d.position.z : 8;
-  const aheadDist = 9;
-  const spread = 2.6;   // wider — matches new runway ±3.6
+  const aheadDist = 54; // 3x farther (was 18)
+  const spread = 3.2;
   const positions = [
-    { x: -spread, z: playerZ - aheadDist + 2 },
-    { x:  0,      z: playerZ - aheadDist - 1 },
-    { x:  spread, z: playerZ - aheadDist + 2 }
+    { x: -spread, z: playerZ - aheadDist + 10 },
+    { x:  0,      z: playerZ - aheadDist - 5  },
+    { x:  spread, z: playerZ - aheadDist + 10 }
   ];
 
   opts.forEach((val, idx) => {
@@ -5826,14 +6370,21 @@ function animateDressupRunway3D() {
   const time = dressupClock3d.getElapsedTime();
 
   if (dressupWalkingFinale) {
-    // Auto catwalk finale
-    dressupPlayer3d.position.z -= 0.06;
+    // Cinematic catwalk finale — elegant strut
+    dressupPlayer3d.position.z -= 0.08;
     dressupPlayer3d.rotation.y = Math.PI;
+    // Slight side sway for catwalk effect
+    dressupPlayer3d.rotation.z = Math.sin(time * 4) * 0.06;
+    dressupPlayer3d.position.x = Math.sin(time * 2) * 0.3; // slight weave
     const torso = dressupPlayer3d.getObjectByName("sp_torso");
     if (torso) {
-      const lL = torso.getObjectByName("sp_legL"); if (lL) lL.rotation.x = Math.sin(time*10)*0.55;
-      const lR = torso.getObjectByName("sp_legR"); if (lR) lR.rotation.x = -Math.sin(time*10)*0.55;
+      const lL = torso.getObjectByName("sp_legL"); if (lL) lL.rotation.x = Math.sin(time*10)*0.7;
+      const lR = torso.getObjectByName("sp_legR"); if (lR) lR.rotation.x = -Math.sin(time*10)*0.7;
+      const aL = torso.getObjectByName("sp_armL"); if (aL) aL.rotation.x = -Math.sin(time*10)*0.4;
+      const aR = torso.getObjectByName("sp_armR"); if (aR) aR.rotation.x = Math.sin(time*10)*0.4;
     }
+    // Camera zooms in slowly for cinematic feel
+    dressCamState.dist = Math.max(6, dressCamState.dist - 0.02);
     if (dressupPlayer3d.position.z < -11) {
       dressupWalkingFinale = false;
       scoreRobuxEarned = dressupCombo3d * 12;
@@ -5888,15 +6439,15 @@ function animateDressupRunway3D() {
 
     dressupPlayer3d.position.x += dressupVelocity3d.x;
     dressupPlayer3d.position.z += dressupVelocity3d.z;
-    // Runway width constraint — wider runway allows more room
-    dressupPlayer3d.position.x = Math.max(-3.6, Math.min(3.6, dressupPlayer3d.position.x));
+    // Runway width ±5.0 matching RW=11
+    dressupPlayer3d.position.x = Math.max(-5.0, Math.min(5.0, dressupPlayer3d.position.x));
 
     // Mannequin collision
     if (!dressupAnswerProcessing3d) {
       for (const m of dressupMannequins3d) {
         const dx = dressupPlayer3d.position.x - m.group.position.x;
         const dz = dressupPlayer3d.position.z - m.group.position.z;
-        if (Math.sqrt(dx*dx + dz*dz) < 2.2) { // wider hit box
+        if (Math.sqrt(dx*dx + dz*dz) < 2.8) { // wider hit box
           handleDressupAnswer3D(m.val);
           break;
         }
@@ -5910,14 +6461,13 @@ function animateDressupRunway3D() {
     if (cube) cube.rotation.y += 0.03;
   });
 
-  // Smooth camera follow (lerp)
-  const dcTX = dressupPlayer3d.position.x;
+  // Orbit camera with dressCamState yaw + zoom
+  const dcTX = dressupPlayer3d.position.x + Math.sin(dressCamState.yaw) * dressCamState.dist;
   const dcTY = dressupPlayer3d.position.y + 11;
-  const dcTZ = dressupPlayer3d.position.z + 10;
-  const dcLF = 0.07;
-  dressupCamera3d.position.x += (dcTX - dressupCamera3d.position.x) * dcLF;
-  dressupCamera3d.position.y += (dcTY - dressupCamera3d.position.y) * dcLF;
-  dressupCamera3d.position.z += (dcTZ - dressupCamera3d.position.z) * dcLF;
+  const dcTZ = dressupPlayer3d.position.z + Math.cos(dressCamState.yaw) * dressCamState.dist;
+  dressupCamera3d.position.x += (dcTX - dressupCamera3d.position.x) * 0.07;
+  dressupCamera3d.position.y += (dcTY - dressupCamera3d.position.y) * 0.07;
+  dressupCamera3d.position.z += (dcTZ - dressupCamera3d.position.z) * 0.07;
   dressupCamera3d.lookAt(dressupPlayer3d.position.x, dressupPlayer3d.position.y + 1, dressupPlayer3d.position.z - 3);
 
   dressupRenderer3d.render(dressupScene3d, dressupCamera3d);
@@ -6158,9 +6708,10 @@ function switchScreen(targetScreenId) {
   }
 
   if (targetScreenId !== "screen-training") {
-    stopBeatSequencer();
-    document.querySelectorAll(".dj-beat-style-btn").forEach(btn => btn.classList.remove("active"));
-    document.querySelector("[data-beat='hiphop']").classList.add("active");
+    stopBeatSequencer(); stopMelodySequencer();
+    document.querySelectorAll(".dj-beat-style-btn, .sd-beat-btn").forEach(btn => btn.classList.remove("active"));
+    const hiphopBtn = document.querySelector("[data-beat='hiphop']");
+    if (hiphopBtn) hiphopBtn.classList.add("active"); // null-safe
   }
 
   const screens = document.querySelectorAll(".game-screen");
@@ -6183,6 +6734,17 @@ document.addEventListener("DOMContentLoaded", () => {
   loadGameState();
   renderAchievementsList();
   initSidebarAvatar();
+
+  // iOS Safari audio unlock — fire on first ANY user interaction
+  const _iosAudioUnlock = () => {
+    unlockIOSAudio();
+    document.removeEventListener('touchstart', _iosAudioUnlock);
+    document.removeEventListener('touchend',   _iosAudioUnlock);
+    document.removeEventListener('click',      _iosAudioUnlock);
+  };
+  document.addEventListener('touchstart', _iosAudioUnlock, { once: true, passive: true });
+  document.addEventListener('touchend',   _iosAudioUnlock, { once: true, passive: true });
+  document.addEventListener('click',      _iosAudioUnlock, { once: true });
 
   // --- Router Events ---
   document.getElementById("mode-to-training").addEventListener("click", () => switchScreen("screen-training"));
@@ -6207,6 +6769,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   document.getElementById("sound-toggle-btn").addEventListener("click", () => {
+    unlockIOSAudio(); // iOS audio unlock on sound toggle
     soundEnabled = !soundEnabled;
     const btnIcon = document.getElementById("sound-icon");
     btnIcon.innerText = soundEnabled ? "🔊" : "🔇";
