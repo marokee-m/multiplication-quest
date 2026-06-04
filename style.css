@@ -1057,21 +1057,22 @@ body { overflow-x: hidden; }
 
 .action-question-banner {
   position: absolute;
-  top: 15px;
+  top: 8px;
   left: 50%;
   transform: translateX(-50%);
-  background: rgba(18, 19, 20, 0.85);
-  border: 3px solid var(--rbx-yellow);
-  padding: 10px 40px;
-  border-radius: 30px;
+  background: rgba(10, 11, 13, 0.88);
+  border: 2px solid var(--rbx-yellow);
+  padding: 5px 22px;         /* smaller padding */
+  border-radius: 20px;
   z-index: 100;
   text-align: center;
-  box-shadow: 0 6px 15px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 4px 10px rgba(0,0,0,0.5);
   pointer-events: none;
   white-space: nowrap;
 }
 .action-question-banner .math-question {
-  font-size: 2.2rem;
+  font-size: 1.5rem;          /* smaller text */
+  font-weight: 900;
 }
 
 .3d-instruction-text {
@@ -2595,6 +2596,16 @@ body { overflow-x: hidden; }
   color: var(--rbx-yellow);
   text-shadow: 0 0 6px rgba(247,159,31,0.6);
 }
+
+/* Hide bottom nav buttons for Chill/Dressup — exit is inside the 3D viewport */
+#gameplay-chill .chill-nav,
+#gameplay-dressup .chill-nav,
+#gameplay-chill .chill-header-hud,
+#gameplay-dressup .dressup-quest-hud { display: none !important; }
+
+/* Make 3D viewport fill the gameplay subscreen */
+#gameplay-chill .arena-3d-wrapper,
+#gameplay-dressup .arena-3d-wrapper { flex: 1 !important; height: 100% !important; }
 
 /* ==========================================================================
    HUD Instruction Text (Boss Battle)

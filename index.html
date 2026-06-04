@@ -54,7 +54,7 @@
   <!-- ========== Three.js 3D WebGL Library ========== -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 
-  <link rel="stylesheet" href="style.css?v=2.5">
+  <link rel="stylesheet" href="style.css?v=2.8">
 </head>
 <body>
 
@@ -367,12 +367,7 @@
                 <!-- Danger zone warning — bottom so it doesn't block question -->
                 <div id="danger-zone-warning" style="display:none; position:absolute; bottom:60px; left:50%; transform:translateX(-50%); background:rgba(200,0,0,0.88); color:#fff; font-weight:900; padding:5px 16px; border-radius:20px; font-size:0.88rem; z-index:200; pointer-events:none; white-space:nowrap;">⚠️ หลบวงแดง!</div>
 
-                <!-- On-Screen Virtual Joystick (touch devices support) -->
-                <div id="joystick-zone" class="joystick-wrapper">
-                  <div class="joystick-ring">
-                    <div class="joystick-knob" id="joystick-handle"></div>
-                  </div>
-                </div>
+                <!-- Joystick injected dynamically by createArenaController -->
 
                 <!-- Text Instruction Overlay -->
                 <div class="hud-instruction-text">
@@ -396,12 +391,7 @@
                   <span class="math-question" id="chill-question">🌱 รดน้ำต้นไม้: 2 × 7 = ?</span>
                 </div>
 
-                <!-- Joystick for touch -->
-                <div id="joystick-zone-chill" class="joystick-wrapper">
-                  <div class="joystick-ring">
-                    <div class="joystick-knob" id="joystick-handle-chill"></div>
-                  </div>
-                </div>
+                <!-- Joystick injected dynamically by createArenaController -->
 
                 <!-- Hint button overlay -->
                 <button id="chill-farm-hint-btn" class="chill-farm-hint-btn" style="display:none;">
@@ -439,12 +429,7 @@
                   <span class="math-question" id="dressup-question" style="font-size:1.25rem;">5 × 9 = ?</span>
                 </div>
 
-                <!-- Joystick -->
-                <div id="joystick-zone-dressup" class="joystick-wrapper">
-                  <div class="joystick-ring">
-                    <div class="joystick-knob" id="joystick-handle-dressup"></div>
-                  </div>
-                </div>
+                <!-- Joystick injected dynamically by createArenaController -->
 
                 <div class="hud-instruction-text">
                   ⌨️ WASD = เดิน | วิ่งชนหุ่นโชว์ที่ถือคำตอบถูก | ตอบครบ = เดินรันเวย์!
@@ -579,6 +564,6 @@
   <button id="btn-exit-fullscreen-fixed" title="ออกจากเกม">✕</button>
 
   <!-- Include App Logic -->
-  <script src="app.js?v=2.5"></script>
+  <script src="app.js?v=2.8"></script>
 </body>
 </html>

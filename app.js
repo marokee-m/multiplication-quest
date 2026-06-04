@@ -897,10 +897,10 @@ function updateAvatarEquipment() {
 // ==========================================================================
 let bossController = null, chillController = null, dressController = null;
 
-// Per-mode mutable camera state
-const bossCamState  = { yaw: 0, dist: 13, minD: 6, maxD: 22 };
-const chillCamState = { yaw: 0, dist: 13, minD: 6, maxD: 22 };
-const dressCamState = { yaw: 0, dist: 10, minD: 5, maxD: 18 };
+// Per-mode mutable camera state (maxD increased for pinch zoom out)
+const bossCamState  = { yaw: 0, dist: 13, minD: 5, maxD: 45 };
+const chillCamState = { yaw: 0, dist: 13, minD: 5, maxD: 45 };
+const dressCamState = { yaw: 0, dist: 10, minD: 4, maxD: 40 };
 
 /**
  * createArenaController — universal cross-platform input handler
@@ -952,7 +952,10 @@ function createArenaController({ canvas, keys, camState, onJump, container, joys
   };
 
   const _ts = e => {
-    e.preventDefault();
+    // Only prevent default if NOT touching a UI button (so buttons can still fire clicks)
+    const hasUITouch = Array.from(e.changedTouches).some(t => isUIBtn(t.clientX, t.clientY));
+    if (!hasUITouch) e.preventDefault();
+
     for (const t of e.changedTouches) {
       if (isUIBtn(t.clientX, t.clientY)) continue;
       if (joyId === null && inJoystick(t.clientX, t.clientY)) {
@@ -1851,7 +1854,7 @@ let sdStep = 0, sdTable = 2, sdKeys3d = {}, sdAnswered = false;
 let sdPlayerVel = { x: 0, z: 0 };
 // Camera orbit
 let sdCamYaw = 0, sdCamDist = 8;
-const SD_CAM_MIN = 4, SD_CAM_MAX = 18;
+const SD_CAM_MIN = 3, SD_CAM_MAX = 35; // wider pinch zoom range
 let sdIsRightDrag = false, sdRightDragLast = { x: 0, y: 0 };
 // Jump in step dance
 let sdIsJumping = false, sdVertVel = 0;
@@ -2101,13 +2104,26 @@ function buildSdOverlay() {
   `;
   arena.appendChild(mctrl);
 
-  // Exit button for step dance
+  // Exit button — stops scene AND goes back to training room
   const sdExitBtn = document.createElement('button');
   sdExitBtn.className = 'training-exit-btn sd-overlay-el';
   sdExitBtn.innerHTML = '✕';
   sdExitBtn.title = 'ออกจากกิจกรรม';
-  sdExitBtn.addEventListener('click', () => { sounds.click(); stopStepDance3D(); exitTrainingFullscreen(); });
+  const doSdExit = () => {
+    unlockIOSAudio();
+    sounds.click();
+    stopStepDance3D();
+    exitTrainingFullscreen();
+    const wrapper = document.getElementById('sd-fullwrap');
+    if (wrapper) wrapper.innerHTML = '<div class="stepdance-arena" id="sd-arena"></div>';
+  };
+  sdExitBtn.addEventListener('click', doSdExit);
+  // iOS Safari: also handle touchend for reliable tap response
+  sdExitBtn.addEventListener('touchend', e => { e.preventDefault(); e.stopPropagation(); doSdExit(); }, { passive: false });
   arena.appendChild(sdExitBtn);
+
+  // iOS audio unlock on first interaction
+  arena.addEventListener('touchstart', () => unlockIOSAudio(), { once: true, passive: true });
 
   // Beat style button events + iOS audio unlock on first tap
   topHud.querySelectorAll('.sd-beat-btn').forEach(btn => {
@@ -2120,10 +2136,11 @@ function buildSdOverlay() {
     });
   });
 
-  // Jump button
+  // Jump button + iOS audio unlock
   const jumpBtn2 = document.getElementById('sd-jump-btn2');
   if (jumpBtn2) {
     const doJump = () => {
+      unlockIOSAudio();
       if (!sdIsJumping && sdPlayer) { sdVertVel = 0.35; sdIsJumping = true; }
     };
     jumpBtn2.addEventListener('touchstart', doJump, { passive: true });
@@ -2196,7 +2213,9 @@ function setupSdTouchControls() {
   };
 
   arena.addEventListener('touchstart', e => {
-    e.preventDefault();
+    // Don't preventDefault on UI buttons so they can receive click events
+    const hasUI = Array.from(e.changedTouches).some(t => isUIButton(t.clientX, t.clientY));
+    if (!hasUI) e.preventDefault();
     for (const t of e.changedTouches) {
       if (isUIButton(t.clientX, t.clientY)) continue;
       if (sdJoyTouchId === null && isJoystickPoint(t.clientX, t.clientY)) {
@@ -2514,27 +2533,93 @@ function initTrampoline3D(tableNum) {
   trampTable = tableNum; trampStep = 1; trampAnswerProcessing = false;
   trampVelocity = { x: 0, z: 0 }; trampVertVel = 0; trampJumping = false; trampCamYaw = 0;
 
+  // === Exciting space/galaxy theme ===
   trampScene = new THREE.Scene();
-  trampScene.background = new THREE.Color(0x0a1525);
-  trampScene.fog = new THREE.Fog(0x0a1525, 20, 50);
+  trampScene.background = new THREE.Color(0x120020); // deep purple galaxy
+  trampScene.fog = new THREE.FogExp2(0x120020, 0.018);
 
   const w = container.offsetWidth || 400;
   const h = container.offsetHeight || 280;
-  trampCamera = new THREE.PerspectiveCamera(50, w / h, 0.1, 80);
+  trampCamera = new THREE.PerspectiveCamera(50, w / h, 0.1, 120);
 
   trampRenderer = new THREE.WebGLRenderer({ antialias: true });
   trampRenderer.setSize(w, h);
   trampRenderer.shadowMap.enabled = true;
   container.appendChild(trampRenderer.domElement);
 
-  trampScene.add(new THREE.AmbientLight(0x334455, 0.7));
-  const sun = new THREE.DirectionalLight(0xffeedd, 1.0);
-  sun.position.set(5, 12, 5); sun.castShadow = true; trampScene.add(sun);
+  // Dramatic colored lighting
+  trampScene.add(new THREE.AmbientLight(0x220033, 0.6));
+  const spotMain = new THREE.SpotLight(0xffffff, 2.0, 40, Math.PI/5, 0.4);
+  spotMain.position.set(0, 18, 0); spotMain.target.position.set(0, 0, 0);
+  trampScene.add(spotMain); trampScene.add(spotMain.target);
 
-  // Ground
-  const ground = new THREE.Mesh(new THREE.CylinderGeometry(12, 12, 0.3, 16),
-    new THREE.MeshStandardMaterial({ color: 0x1a2a3a, roughness: 0.9 }));
-  ground.position.y = -0.15; ground.receiveShadow = true; trampScene.add(ground);
+  const colorLights = [
+    { c: 0xff00ff, p: [-10, 5, 0] },  // magenta left
+    { c: 0x00ffff, p: [10, 5, 0] },   // cyan right
+    { c: 0xffff00, p: [0, 5, -10] },  // yellow back
+    { c: 0xff5500, p: [0, 8, 8] }     // orange front
+  ];
+  colorLights.forEach(({ c, p }) => {
+    const pl = new THREE.PointLight(c, 1.2, 22);
+    pl.position.set(...p); trampScene.add(pl);
+  });
+
+  // === Stage platform — glowing hexagonal arena ===
+  const stageMat = new THREE.MeshStandardMaterial({ color: 0x1a0030, roughness: 0.5, metalness: 0.3 });
+  const stage = new THREE.Mesh(new THREE.CylinderGeometry(14, 13, 0.4, 8), stageMat);
+  stage.position.y = -0.2; stage.receiveShadow = true; trampScene.add(stage);
+
+  // Glowing ring around stage edge
+  const ringMat = new THREE.MeshBasicMaterial({ color: 0xff00ff });
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(13.5, 0.18, 8, 32), ringMat);
+  ring.rotation.x = Math.PI / 2; ring.position.y = 0.1; trampScene.add(ring);
+  const ring2 = new THREE.Mesh(new THREE.TorusGeometry(13.2, 0.1, 8, 32),
+    new THREE.MeshBasicMaterial({ color: 0x00ffff }));
+  ring2.rotation.x = Math.PI / 2; ring2.position.y = 0.05; trampScene.add(ring2);
+
+  // Inner glowing floor pattern (star/diamond grid)
+  const floorGeo = new THREE.CircleGeometry(12.5, 32);
+  const floorMat = new THREE.MeshStandardMaterial({ color: 0x0d0020, roughness: 0.3 });
+  const floor = new THREE.Mesh(floorGeo, floorMat);
+  floor.rotation.x = -Math.PI/2; floor.position.y = 0.01; trampScene.add(floor);
+
+  // Decorative neon lines on floor (grid)
+  const lineMat = new THREE.MeshBasicMaterial({ color: 0x440088, transparent: true, opacity: 0.6 });
+  for (let i = -12; i <= 12; i += 3) {
+    const hLine = new THREE.Mesh(new THREE.BoxGeometry(25, 0.02, 0.06), lineMat);
+    hLine.position.set(0, 0.02, i); trampScene.add(hLine);
+    const vLine = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.02, 25), lineMat);
+    vLine.position.set(i, 0.02, 0); trampScene.add(vLine);
+  }
+
+  // Star pillars (audience area)
+  const pillarCols = [0xff00ff, 0x00ffff, 0xffaa00, 0x00ff88];
+  for (let i = 0; i < 12; i++) {
+    const angle = (i / 12) * Math.PI * 2;
+    const px = Math.cos(angle) * 13.5, pz = Math.sin(angle) * 13.5;
+    const pillar = new THREE.Mesh(
+      new THREE.BoxGeometry(0.5, 4 + Math.random()*2, 0.5),
+      new THREE.MeshStandardMaterial({ color: pillarCols[i%4], emissive: pillarCols[i%4], emissiveIntensity: 0.6 })
+    );
+    pillar.position.set(px, 2, pz); trampScene.add(pillar);
+    // Glowing orb on top
+    const orb = new THREE.Mesh(new THREE.SphereGeometry(0.3, 8, 8),
+      new THREE.MeshBasicMaterial({ color: pillarCols[i%4] }));
+    orb.position.set(px, 5 + Math.random()*2, pz); trampScene.add(orb);
+  }
+
+  // Floating star particles
+  for (let i = 0; i < 40; i++) {
+    const star = new THREE.Mesh(
+      new THREE.BoxGeometry(0.15, 0.15, 0.15),
+      new THREE.MeshBasicMaterial({ color: [0xffffff, 0xffff88, 0xaaffff, 0xffaaff][i%4] })
+    );
+    star.position.set(
+      (Math.random()-0.5)*28, 3+Math.random()*10, (Math.random()-0.5)*28
+    );
+    star.rotation.set(Math.random()*3.14, Math.random()*3.14, Math.random()*3.14);
+    trampScene.add(star);
+  }
 
   // Trampoline platforms (3 in arc)
   trampPlatforms = [];
@@ -2586,8 +2671,18 @@ function buildTrampOverlay() {
   exitBtn.className = 'training-exit-btn sd-overlay-el';
   exitBtn.innerHTML = '✕';
   exitBtn.title = 'ออกจากกิจกรรม';
-  exitBtn.addEventListener('click', () => { sounds.click(); stopTrampoline3D(); exitTrainingFullscreen(); });
+  const doTrExit = () => {
+    unlockIOSAudio(); sounds.click();
+    stopTrampoline3D(); exitTrainingFullscreen();
+    const wrapper = document.getElementById('tramp-fullwrap');
+    if (wrapper) wrapper.innerHTML = '<div class="stepdance-arena" id="tramp-arena" style="background:linear-gradient(180deg,#0a1628,#1a2a4a);"></div>';
+  };
+  exitBtn.addEventListener('click', doTrExit);
+  exitBtn.addEventListener('touchend', e => { e.preventDefault(); e.stopPropagation(); doTrExit(); }, { passive: false });
   arena.appendChild(exitBtn);
+
+  // iOS audio unlock on first interaction
+  arena.addEventListener('touchstart', () => unlockIOSAudio(), { once: true, passive: true });
 
   // Rotate hint
   const rh = document.createElement('div');
@@ -2636,7 +2731,7 @@ function buildTrampOverlay() {
 
 // Tramp PC controls — right-click camera + scroll zoom
 let trampCtrl = null; // shared controller instance for trampoline
-const trampCamState = { yaw: 0, dist: 11, minD: 5, maxD: 20 };
+const trampCamState = { yaw: 0, dist: 11, minD: 4, maxD: 40 }; // wider zoom range
 let trampCamYaw2 = 0, trampIsRightDrag = false, trampRightDragLast = { x: 0, y: 0 }; // legacy (kept for compat)
 let trampJoyTouchId = null, trampCamTouchId2 = null, trampCamTouchLastX2 = 0;
 let trampPinchDist = 0;
@@ -2679,7 +2774,9 @@ function setupTrampTouchControls() {
   let joyCX=0, joyCY=0;
 
   arena.addEventListener('touchstart', e => {
-    e.preventDefault();
+    // Don't preventDefault on buttons so they can fire click events
+    const hasUI = Array.from(e.changedTouches).some(t => isBtn(t.clientX,t.clientY));
+    if (!hasUI) e.preventDefault();
     for (const t of e.changedTouches) {
       if (isBtn(t.clientX,t.clientY)) continue;
       if (trampJoyTouchId===null && isJoy(t.clientX,t.clientY)) {
@@ -2701,12 +2798,8 @@ function setupTrampTouchControls() {
     if (e.touches.length===2 && trampPinchDist>0) {
       const dx=e.touches[0].clientX-e.touches[1].clientX, dy=e.touches[0].clientY-e.touches[1].clientY;
       const d=Math.sqrt(dx*dx+dy*dy);
-      if (trampCamera && trampPlayer) {
-        const ratio=trampPinchDist/d;
-        const dir=new THREE.Vector3().subVectors(trampCamera.position,trampPlayer.position);
-        const newLen=Math.max(8,Math.min(20,dir.length()*ratio));
-        trampCamera.position.copy(trampPlayer.position).addScaledVector(dir.normalize(),newLen);
-      }
+      // Use trampCamState for zoom — wider range
+      trampCamState.dist = Math.max(trampCamState.minD, Math.min(trampCamState.maxD, trampCamState.dist*(trampPinchDist/d)));
       trampPinchDist=d; return;
     }
     for (const t of e.changedTouches) {
@@ -2843,20 +2936,39 @@ function buildTrampPlatforms() {
     const g = new THREE.Group();
     g.position.set(px, 0, pz);
 
-    // Trampoline base
-    const base = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 1.6, 0.25, 16),
-      new THREE.MeshStandardMaterial({ color: 0x2d3a4a, roughness: 0.6 }));
-    base.position.y = 0.12; base.castShadow = true; g.add(base);
+    // Glowing trampoline platform
+    const platColors = [0xff2255, 0x00ccff, 0x00ff88];
+    const platColor = platColors[idx];
 
-    // Bounce surface (colored)
-    const colors = [0xff5252, 0x40c4ff, 0x69f0ae];
-    const surf = new THREE.Mesh(new THREE.CylinderGeometry(1.4, 1.4, 0.08, 16),
-      new THREE.MeshStandardMaterial({ color: colors[idx], roughness: 0.3, emissive: colors[idx], emissiveIntensity: 0.2 }));
-    surf.position.y = 0.3; g.add(surf);
+    // Outer glowing ring base
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(1.85, 1.7, 0.28, 16),
+      new THREE.MeshStandardMaterial({ color: platColor, emissive: platColor, emissiveIntensity: 0.4, roughness: 0.3, metalness: 0.5 }));
+    base.position.y = 0.14; base.castShadow = true; g.add(base);
 
-    // Number label
+    // Bounce surface (brighter center)
+    const surf = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.5, 0.1, 16),
+      new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: platColor, emissiveIntensity: 0.6, roughness: 0.1 }));
+    surf.position.y = 0.34; g.add(surf);
+
+    // Pulsing neon edge ring
+    const edgeRing = new THREE.Mesh(new THREE.TorusGeometry(1.65, 0.1, 8, 20),
+      new THREE.MeshBasicMaterial({ color: platColor }));
+    edgeRing.rotation.x = Math.PI/2; edgeRing.position.y = 0.35;
+    edgeRing.name = 'edge_ring'; g.add(edgeRing);
+
+    // Tall neon pillar supporting the platform
+    const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.22, 0.4, 8),
+      new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.4 }));
+    pillar.position.y = -0.08; g.add(pillar);
+
+    // Pedestal glow pad on floor
+    const glowPad = new THREE.Mesh(new THREE.CylinderGeometry(2.0, 2.0, 0.05, 16),
+      new THREE.MeshBasicMaterial({ color: platColor, transparent: true, opacity: 0.25 }));
+    glowPad.position.y = -0.15; g.add(glowPad);
+
+    // Large number label (bigger and more visible)
     const label = createTextSprite3D(`${answers[idx]}`);
-    label.position.set(0, 1.5, 0); label.scale.set(3, 1.5, 1); g.add(label);
+    label.position.set(0, 1.8, 0); label.scale.set(4, 2, 1); g.add(label);
 
     trampScene.add(g);
     trampPlatforms.push({ group: g, answer: answers[idx], isCorrect, px, pz, surf });
@@ -3257,11 +3369,15 @@ function initThreeJS() {
   scene3d.fog = new THREE.FogExp2(0x1a1c1e, 0.015);
 
   // 2. Camera
-  camera3d = new THREE.PerspectiveCamera(55, container.clientWidth / container.clientHeight, 0.1, 1000);
+  // Use offsetWidth/offsetHeight as fallback to prevent 0×0 canvas (black screen)
+  const cW = container.offsetWidth  || container.clientWidth  || window.innerWidth;
+  const cH = container.offsetHeight || container.clientHeight || (window.innerHeight - 80);
+
+  camera3d = new THREE.PerspectiveCamera(55, cW / cH, 0.1, 1000);
 
   // 3. Renderer
   renderer3d = new THREE.WebGLRenderer({ antialias: true });
-  renderer3d.setSize(container.clientWidth, container.clientHeight);
+  renderer3d.setSize(cW, cH);
   renderer3d.shadowMap.enabled = true;
   container.appendChild(renderer3d.domElement);
 
@@ -4803,7 +4919,8 @@ function startPathGameplay(path) {
     // Fixed 240 HP — consistent with 12 correct answers × 20 HP each
     maxBossHP = 240;
     currentBossHP = maxBossHP;
-    document.getElementById("boss-max-hp").innerText = maxBossHP;
+    const bossMaxEl = document.getElementById("boss-max-hp");
+    if (bossMaxEl) bossMaxEl.innerText = maxBossHP; // null-safe
     updateBossHPUI();
 
     comboCount = 0;
@@ -4818,9 +4935,12 @@ function startPathGameplay(path) {
 
     isAnswerProcessing = false;
 
-    // Load Three.js 3D Viewport
-    initThreeJS();
-    nextActionQuestion3D();
+    // Wait for fullscreen CSS to settle, THEN init Three.js
+    // (avoids clientWidth=0 causing black screen)
+    setTimeout(() => {
+      initThreeJS();
+      nextActionQuestion3D();
+    }, 120);
 
     // Init P2 if multiplayer
     if (multiplayerMode) {
@@ -6459,6 +6579,16 @@ function animateDressupRunway3D() {
   dressupMannequins3d.forEach(m => {
     const cube = m.group.getObjectByName("mannequin_cube");
     if (cube) cube.rotation.y += 0.03;
+  });
+
+  // Animate trampoline edge rings (pulse + spin)
+  trampPlatforms.forEach((p, i) => {
+    const ring = p.group.getObjectByName('edge_ring');
+    if (ring) {
+      ring.rotation.z = time * 2 + i * (Math.PI * 2 / 3);
+      const pulse = 0.9 + Math.sin(time * 4 + i) * 0.1;
+      ring.scale.set(pulse, 1, pulse);
+    }
   });
 
   // Orbit camera with dressCamState yaw + zoom
