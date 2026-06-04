@@ -1100,6 +1100,25 @@ function createArenaController({ canvas, keys, camState, onJump, container, joys
 }
 
 // ==========================================================================
+// Camera-Relative Movement Utility
+// mX = right(+1)/left(-1), mZ = back(+1)/forward(-1), camYaw = current camera yaw
+// Returns { x, z } world-space movement direction (normalized magnitude of input)
+// ==========================================================================
+function camRelMove(mX, mZ, camYaw) {
+  // Camera forward direction in world XZ plane (direction camera looks)
+  const cfX = -Math.sin(camYaw);
+  const cfZ = -Math.cos(camYaw);
+  // Camera right direction (perpendicular, rotated 90° CW)
+  const crX =  Math.cos(camYaw);
+  const crZ = -Math.sin(camYaw);
+  // World direction = forward_component (-mZ) + right_component (mX)
+  return {
+    x: (-mZ) * cfX + mX * crX,
+    z: (-mZ) * cfZ + mX * crZ
+  };
+}
+
+// ==========================================================================
 // Camera Utility — apply camState (yaw + pitch + dist + fov) to a THREE camera
 // ==========================================================================
 function applyCamState(camera, playerPos, cs, lerpF = 0.08) {
@@ -2528,7 +2547,8 @@ function sdAnimateDanceFloor() {
   const maxSpd = 0.13, acc = 0.04, dec = 0.2;
   if (mX !== 0 || mZ !== 0) {
     const len = Math.sqrt(mX*mX + mZ*mZ);
-    sdPlayerVel.x += (mX/len)*acc; sdPlayerVel.z += (mZ/len)*acc;
+    const sRel = camRelMove(mX/len, mZ/len, sdCamState.yaw);
+    sdPlayerVel.x += sRel.x*acc; sdPlayerVel.z += sRel.z*acc;
     const spd = Math.sqrt(sdPlayerVel.x**2 + sdPlayerVel.z**2);
     if (spd > maxSpd) { sdPlayerVel.x=(sdPlayerVel.x/spd)*maxSpd; sdPlayerVel.z=(sdPlayerVel.z/spd)*maxSpd; }
     sdPlayer.rotation.y = Math.atan2(sdPlayerVel.x, sdPlayerVel.z);
@@ -2767,8 +2787,8 @@ function initTrampoline3D(tableNum) {
     camState:  trampCamState,
     onJump:    () => { if (!trampJumping && trampPlayer) { trampVertVel = 0.45; trampJumping = true; } },
     container: document.getElementById('tramp-arena'),
-    joystickId: 'tramp-ctrl-joy',
-    jumpBtnId:  'tramp-ctrl-jump'
+    joystickId: null,   // joystick added by buildTrampOverlay
+    jumpBtnId:  null    // jump button added by buildTrampOverlay
   });
 
   trampRenderer.domElement.addEventListener('touchstart', () => unlockIOSAudio(), { once: true, passive: true });
@@ -3124,9 +3144,11 @@ function animateTrampoline3D() {
 
   const spd = 0.15;
   if (mX !== 0 || mZ !== 0) {
-    trampVelocity.x = mX * spd;
-    trampVelocity.z = mZ * spd;
-    if (trampPlayer) trampPlayer.rotation.y = Math.atan2(mX, mZ);
+    const tLen = Math.sqrt(mX*mX+mZ*mZ);
+    const tRel = camRelMove(mX/tLen, mZ/tLen, trampCamState.yaw);
+    trampVelocity.x = tRel.x * spd;
+    trampVelocity.z = tRel.z * spd;
+    if (trampPlayer) trampPlayer.rotation.y = Math.atan2(trampVelocity.x, trampVelocity.z);
   } else {
     trampVelocity.x *= 0.8; trampVelocity.z *= 0.8;
   }
@@ -4194,10 +4216,11 @@ function animate3DScene() {
   const deccel = 0.18; // smoother stop
 
   if (moveX !== 0 || moveZ !== 0) {
-    // Normalize moving direction
-    const length = Math.sqrt(moveX * moveX + moveZ * moveZ);
-    playerVelocity.x += (moveX / length) * accel;
-    playerVelocity.z += (moveZ / length) * accel;
+    // Camera-relative movement
+    const len = Math.sqrt(moveX*moveX + moveZ*moveZ);
+    const rel = camRelMove(moveX/len, moveZ/len, bossCamState.yaw);
+    playerVelocity.x += rel.x * accel;
+    playerVelocity.z += rel.z * accel;
     
     // Clamp speed
     const currentSpeed = Math.sqrt(playerVelocity.x*playerVelocity.x + playerVelocity.z*playerVelocity.z);
@@ -4344,8 +4367,9 @@ function handleAnswerSelect3D(chosenVal, hitPortalGroup) {
     bossQuestionsCorrect++;
     document.getElementById("action-combo-val").innerText = comboCount;
 
-    const totalDmg = Math.round(maxBossHP / BOSS_QUESTIONS_REQUIRED) * comboCount;
-    triggerPlayerAttackAnimation(totalDmg);
+    // Fixed 20 HP per hit (240/12=20) regardless of combo
+    const dmgPerHit = maxBossHP / BOSS_QUESTIONS_REQUIRED;
+    triggerPlayerAttackAnimation(dmgPerHit);
     triggerBossHitEffect();
     // TTS: announce the multiplication fact
     speakThai(`${currentQuestionData.table} คูณ ${currentQuestionData.mult} เท่ากับ ${currentQuestionData.ans} ถูกต้อง`);
@@ -5995,8 +6019,9 @@ function animateChillFarm3D() {
 
   if (mX !== 0 || mZ !== 0) {
     const len = Math.sqrt(mX*mX + mZ*mZ);
-    chillFarmVelocity.x += (mX/len)*accel;
-    chillFarmVelocity.z += (mZ/len)*accel;
+    const cRel = camRelMove(mX/len, mZ/len, chillCamState.yaw);
+    chillFarmVelocity.x += cRel.x*accel;
+    chillFarmVelocity.z += cRel.z*accel;
     const spd = Math.sqrt(chillFarmVelocity.x**2 + chillFarmVelocity.z**2);
     if (spd > maxSpd) {
       chillFarmVelocity.x = (chillFarmVelocity.x/spd)*maxSpd;
@@ -6644,8 +6669,9 @@ function animateDressupRunway3D() {
     const maxSpd = 0.15, accel = 0.035, deccel = 0.18;
     if (mX !== 0 || mZ !== 0) {
       const len = Math.sqrt(mX*mX + mZ*mZ);
-      dressupVelocity3d.x += (mX/len)*accel;
-      dressupVelocity3d.z += (mZ/len)*accel;
+      const dRel = camRelMove(mX/len, mZ/len, dressCamState.yaw);
+      dressupVelocity3d.x += dRel.x*accel;
+      dressupVelocity3d.z += dRel.z*accel;
       const spd = Math.sqrt(dressupVelocity3d.x**2 + dressupVelocity3d.z**2);
       if (spd > maxSpd) {
         dressupVelocity3d.x = (dressupVelocity3d.x/spd)*maxSpd;
@@ -6970,6 +6996,11 @@ document.addEventListener("DOMContentLoaded", () => {
   loadGameState();
   renderAchievementsList();
   initSidebarAvatar();
+
+  // iOS Safari: prevent long-press context menu / copy popup on game elements
+  document.addEventListener('contextmenu',  e => e.preventDefault());
+  document.addEventListener('selectstart',  e => e.preventDefault());
+  document.addEventListener('touchforcechange', e => e.preventDefault(), { passive: false });
 
   // iOS Safari audio unlock — fire on first ANY user interaction
   const _iosAudioUnlock = () => {
