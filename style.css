@@ -2028,51 +2028,197 @@ body { overflow-x: hidden; }
 }
 
 /* ==========================================================================
-   Step Dance Activity
+   Training 3D Full-width Wrapper (Step Dance & Trampoline)
    ========================================================================== */
-.stepdance-wrapper {
-  display: flex;
-  gap: 14px;
-  height: 100%;
-  min-height: 280px;
-}
-.stepdance-sidebar {
-  width: 180px;
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.stepdance-arena {
-  flex: 1;
-  border-radius: 8px;
+.training-3d-fullscreen {
+  position: relative;
+  width: 100%;
+  height: 420px;
   overflow: hidden;
-  min-height: 240px;
-  background: linear-gradient(180deg, #05070a, #0d1a2a);
+  background: #050810;
+  border-radius: 8px;
   border: 2px solid var(--rbx-border-color);
 }
-.sd-key-hints {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 5px;
-  margin-top: 4px;
+.stepdance-arena {
+  width: 100%;
+  height: 100%;
+  position: relative;   /* overlays anchor here */
+  overflow: hidden;
 }
-.sd-key-hint {
+.stepdance-arena canvas {
+  width: 100% !important;
+  height: 100% !important;
+  display: block;
+  position: absolute;
+  inset: 0;
+}
+
+/* Landscape fullscreen mode for training activities */
+.training-landscape-fullscreen {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 1200 !important;
+  height: 100vw !important;
+  width: 100vh !important;
+  transform: rotate(90deg) translateY(-100%);
+  transform-origin: top left;
+  border-radius: 0 !important;
+  border: none !important;
+}
+@media (orientation: landscape) {
+  .training-landscape-fullscreen {
+    position: fixed !important;
+    inset: 0 !important;
+    z-index: 1200 !important;
+    height: 100vh !important;
+    width: 100vw !important;
+    transform: none;
+  }
+}
+
+/* === SD Overlay HUD elements === */
+.sd-top-hud {
+  position: absolute;
+  top: 0; left: 0; right: 0;
   display: flex;
   align-items: center;
-  gap: 5px;
-  font-size: 0.78rem;
-  color: var(--rbx-text-muted);
+  justify-content: space-between;
+  padding: 8px 14px;
+  background: rgba(0,0,0,0.55);
+  backdrop-filter: blur(4px);
+  z-index: 50;
+  gap: 10px;
 }
-.sd-key {
-  background: var(--rbx-bg-darker);
-  border: 1px solid var(--rbx-border-color);
-  border-radius: 4px;
-  padding: 2px 6px;
-  font-weight: 700;
-  font-size: 0.72rem;
+.sd-question-center {
+  flex: 1;
+  text-align: center;
+}
+.sd-formula-big {
+  font-size: 1.6rem;
+  font-weight: 900;
   color: var(--rbx-neon-cyan);
+  text-shadow: 0 0 10px rgba(0,255,255,0.6);
+  font-family: var(--font-gaming);
 }
+.sd-step-info {
+  font-size: 0.75rem;
+  color: rgba(255,255,255,0.7);
+  margin-top: 2px;
+}
+.sd-beat-btns {
+  display: flex;
+  gap: 5px;
+  flex-shrink: 0;
+}
+.sd-beat-btn {
+  background: rgba(0,0,0,0.6);
+  border: 1px solid var(--rbx-border-color);
+  color: #fff;
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: var(--font-gaming);
+  transition: background 0.15s, border-color 0.15s;
+}
+.sd-beat-btn.active  { background: rgba(30,99,230,0.7); border-color: var(--rbx-blue); }
+.sd-beat-btn:active  { transform: scale(0.93); }
+
+/* SD Feedback overlay */
+.sd-feedback-overlay {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 1.3rem;
+  font-weight: 900;
+  color: var(--rbx-neon-green);
+  text-shadow: 0 0 10px var(--rbx-neon-green);
+  pointer-events: none;
+  z-index: 60;
+  opacity: 0;
+  transition: opacity 0.5s;
+  font-family: var(--font-gaming);
+  text-align: center;
+}
+
+/* === Mobile Controls (Joystick + Jump) === */
+.sd-mobile-controls {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  padding: 10px 14px;
+  pointer-events: none;
+  z-index: 50;
+}
+.sd-joystick-zone {
+  pointer-events: all;
+  width: 88px;
+  height: 88px;
+  background: rgba(255,255,255,0.12);
+  border: 2px solid rgba(255,255,255,0.25);
+  border-radius: 50%;
+  position: relative;
+  touch-action: none;
+  user-select: none;
+}
+.sd-joystick-knob {
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 38px; height: 38px;
+  background: rgba(255,255,255,0.55);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  transition: transform 0.05s;
+}
+.sd-jump-btn {
+  pointer-events: all;
+  width: 68px; height: 68px;
+  background: rgba(0,176,111,0.8);
+  border: 2px solid var(--rbx-neon-green);
+  border-radius: 50%;
+  color: #000;
+  font-size: 0.75rem;
+  font-weight: 900;
+  font-family: var(--font-gaming);
+  cursor: pointer;
+  touch-action: manipulation;
+  user-select: none;
+  line-height: 1.2;
+  display: flex; align-items: center; justify-content: center;
+  flex-direction: column;
+}
+.sd-jump-btn:active { transform: scale(0.9); background: var(--rbx-neon-green); }
+
+/* "Rotate device" hint for portrait mode */
+.sd-rotate-hint {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.85);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #fff;
+  gap: 12px;
+  font-family: var(--font-gaming);
+}
+.sd-rotate-icon { font-size: 3rem; animation: sdRotateAnim 2s infinite; }
+@keyframes sdRotateAnim {
+  0%   { transform: rotate(0deg); }
+  40%  { transform: rotate(90deg); }
+  100% { transform: rotate(90deg); }
+}
+@media (orientation: landscape) { .sd-rotate-hint { display: none !important; } }
+/* On PC (hover device) never show rotate hint */
+@media (hover: hover) { .sd-rotate-hint { display: none !important; } }
 
 /* ==========================================================================
    Chill Farm Hint Button

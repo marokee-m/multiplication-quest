@@ -54,7 +54,7 @@
   <!-- ========== Three.js 3D WebGL Library ========== -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=2.1">
 </head>
 <body>
 
@@ -198,52 +198,19 @@
           <!-- Tab Content Views -->
           <div class="tab-content-container">
 
-            <!-- Activity 1: Step Dance -->
+            <!-- Activity 1: Step Dance — Full-width 3D, overlays inside -->
             <div id="tab-stepdance" class="tab-view active">
-              <div class="stepdance-wrapper">
-                <div class="stepdance-sidebar">
-                  <div class="beattap-formula" id="sd-formula">2 × ? = ?</div>
-                  <div class="beattap-stats" style="gap:6px;">
-                    <div>ก้าว: <strong id="sd-step">0</strong> / 12</div>
-                    <div>คำตอบ: <strong id="sd-result" style="color:var(--rbx-neon-cyan);font-size:1.3rem;">?</strong></div>
-                  </div>
-                  <div class="beattap-feedback" id="sd-feedback"></div>
-                  <div class="sd-key-hints">
-                    <div class="sd-key-hint"><span class="sd-key">A</span> ซ้าย</div>
-                    <div class="sd-key-hint"><span class="sd-key">W</span> หน้า/กลาง</div>
-                    <div class="sd-key-hint"><span class="sd-key">D</span> ขวา</div>
-                    <div class="sd-key-hint"><span class="sd-key">S</span> ถอย/รีเซ็ต</div>
-                  </div>
-                  <div class="dj-controls" style="flex-direction:column;gap:6px;margin-top:8px;">
-                    <button class="dj-beat-style-btn active" data-beat="hiphop" style="width:100%;">🎧 HipHop</button>
-                    <button class="dj-beat-style-btn" data-beat="edm" style="width:100%;">⚡ EDM</button>
-                    <button class="dj-beat-style-btn" data-beat="drum" style="width:100%;">🥁 Drum</button>
-                  </div>
-                  <p class="builder-tip" style="margin-top:8px;">💡 กด WASD ตามทิศที่ไฟนีออนสว่าง!</p>
-                </div>
-                <div class="stepdance-arena" id="sd-arena">
-                  <!-- 3D step dance scene -->
-                </div>
+              <div class="training-3d-fullscreen" id="sd-fullwrap">
+                <div class="stepdance-arena" id="sd-arena"></div>
+                <!-- Overlays injected by JS -->
               </div>
             </div>
 
-            <!-- Activity 2: Answer Trampoline -->
+            <!-- Activity 2: Answer Trampoline — Full-width 3D -->
             <div id="tab-trampoline" class="tab-view">
-              <div class="stacker-wrapper">
-                <div class="stacker-sidebar">
-                  <div class="stacker-formula" id="tramp-formula">2 × 1 = ?</div>
-                  <div class="stacker-instruction">
-                    วิ่งไปที่แท่นที่มีคำตอบถูก<br>
-                    แล้วกด <strong style="color:var(--rbx-neon-cyan);">Space</strong> เพื่อกระโดด!
-                  </div>
-                  <div class="stacker-total-display">
-                    <div class="stacker-total-num" id="tramp-step" style="font-size:2rem;">1</div>
-                    <div style="font-size:0.8rem;color:var(--rbx-text-muted);">/ 12 ข้อ</div>
-                  </div>
-                  <div class="beattap-feedback" id="tramp-feedback" style="margin-top:6px;"></div>
-                  <p class="builder-tip" style="margin-top:8px;">💡 WASD วิ่ง | Space กระโดด | คลิกขวาลากหมุนกล้อง</p>
-                </div>
-                <div class="stacker-towers-area" id="tramp-arena" style="min-height:280px;background:linear-gradient(180deg,#0a1628,#1a2a4a);"></div>
+              <div class="training-3d-fullscreen" id="tramp-fullwrap">
+                <div class="stepdance-arena" id="tramp-arena"></div>
+                <!-- Overlays injected by JS -->
               </div>
             </div>
 
@@ -609,6 +576,6 @@
   <button id="btn-exit-fullscreen-fixed" title="ออกจากเกม">✕</button>
 
   <!-- Include App Logic -->
-  <script src="app.js"></script>
+  <script src="app.js?v=2.1"></script>
 </body>
 </html>

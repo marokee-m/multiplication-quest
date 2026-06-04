@@ -1648,7 +1648,18 @@ function doStackerDrop() {
 let sdScene = null, sdCamera = null, sdRenderer = null, sdAnimId = null;
 let sdPlayer = null, sdTiles = [], sdCurrentLane = 1; // 0=left,1=center,2=right
 let sdStep = 0, sdTable = 2, sdKeys3d = {}, sdAnswered = false;
-let sdPlayerVel = { x: 0, z: 0 }; // physical walk velocity
+let sdPlayerVel = { x: 0, z: 0 };
+// Camera orbit
+let sdCamYaw = 0, sdCamDist = 8;
+const SD_CAM_MIN = 4, SD_CAM_MAX = 18;
+let sdIsRightDrag = false, sdRightDragLast = { x: 0, y: 0 };
+// Jump in step dance
+let sdIsJumping = false, sdVertVel = 0;
+// Touch tracking
+let sdJoyTouchId = null, sdCamTouchId = null;
+let sdJoyCenterX = 0, sdJoyCenterY = 0;
+let sdCamTouchLastX = 0;
+let sdPinchStartDist = 0;
 const SD_LANE_POSITIONS = [-2.8, 0, 2.8]; // X positions of tiles
 // Tile Z positions — spread out so player actually walks between them
 const SD_TILE_Z = -2.5; // all tiles at same Z but spread laterally
@@ -1744,16 +1755,24 @@ function initStepDance3D(tableNum) {
 
   // Player
   sdPlayer = buildSimplePlayer3D(sdScene);
-  sdPlayer.position.set(0, 0.9, 2); // start at center
+  sdPlayer.position.set(0, 0.9, 2);
 
   sdCurrentLane = 1;
   sdKeys3d = {};
   sdPlayerVel = { x: 0, z: 0 };
+  sdCamYaw = 0; sdCamDist = 8;
+  sdIsJumping = false; sdVertVel = 0;
+
   window.addEventListener('keydown', handleSdKey);
   window.addEventListener('keyup', handleSdKeyUp);
 
-  // Mobile D-pad
-  addStepDanceDpad();
+  // Build overlay HUD + controls
+  buildSdOverlay();
+  setupSdPCControls();
+  setupSdTouchControls();
+
+  // Request landscape fullscreen on mobile
+  requestTrainingLandscape(document.getElementById('sd-fullwrap'));
 
   // Start first step
   sdUpdateUI();
@@ -1768,16 +1787,226 @@ function initStepDance3D(tableNum) {
 }
 
 function handleSdKey(e) {
-  // Physical walk mode — just track key state for movement
   const key = e.key.toLowerCase();
   sdKeys3d[key] = true;
-  if (['a','s','d','w','arrowleft','arrowright','arrowup','arrowdown'].includes(key)) {
+  // Spacebar = jump in step dance
+  if ((e.code === 'Space' || key === ' ') && !sdIsJumping && sdPlayer) {
+    sdVertVel = 0.35; sdIsJumping = true; e.preventDefault();
+  }
+  if (['a','s','d','w','arrowleft','arrowright','arrowup','arrowdown',' '].includes(key)) {
     e.preventDefault();
   }
 }
 
 function handleSdKeyUp(e) {
   sdKeys3d[e.key.toLowerCase()] = false;
+}
+
+// === Landscape fullscreen for training activities ===
+async function requestTrainingLandscape(wrapper) {
+  try {
+    if (wrapper && wrapper.requestFullscreen && !document.fullscreenElement) {
+      await wrapper.requestFullscreen({ navigationUI: 'hide' });
+    }
+  } catch(e) {}
+  try {
+    if (screen.orientation?.lock) await screen.orientation.lock('landscape');
+  } catch(e) {} // Not all browsers support this
+}
+
+function exitTrainingFullscreen() {
+  try { if (document.fullscreenElement) document.exitFullscreen(); } catch(e) {}
+  try { if (screen.orientation?.unlock) screen.orientation.unlock(); } catch(e) {}
+}
+
+// === Build HUD overlay inside the SD arena ===
+function buildSdOverlay() {
+  const arena = document.getElementById('sd-arena');
+  if (!arena) return;
+  // Remove previous overlays
+  arena.querySelectorAll('.sd-overlay-el').forEach(e => e.remove());
+
+  // Rotate hint (portrait only)
+  const rotHint = document.createElement('div');
+  rotHint.className = 'sd-rotate-hint sd-overlay-el';
+  rotHint.innerHTML = `<span class="sd-rotate-icon">📱</span><span>หมุนมือถือให้แนวนอน</span>`;
+  arena.appendChild(rotHint);
+
+  // Top HUD
+  const topHud = document.createElement('div');
+  topHud.className = 'sd-top-hud sd-overlay-el';
+  topHud.innerHTML = `
+    <div class="sd-question-center">
+      <div class="sd-formula-big" id="sd-formula">2 × 1 = ?</div>
+      <div class="sd-step-info">ก้าว <span id="sd-step">0</span>/12 &nbsp;|&nbsp; คำตอบ: <span id="sd-result" style="color:var(--rbx-neon-cyan)">?</span></div>
+    </div>
+    <div class="sd-beat-btns">
+      <button class="sd-beat-btn active" data-beat="hiphop">🎧</button>
+      <button class="sd-beat-btn" data-beat="edm">⚡</button>
+      <button class="sd-beat-btn" data-beat="drum">🥁</button>
+    </div>
+  `;
+  arena.appendChild(topHud);
+
+  // Feedback overlay
+  const fb = document.createElement('div');
+  fb.className = 'sd-feedback-overlay sd-overlay-el';
+  fb.id = 'sd-feedback-ov';
+  arena.appendChild(fb);
+
+  // Mobile controls (joystick + jump)
+  const mctrl = document.createElement('div');
+  mctrl.className = 'sd-mobile-controls sd-overlay-el';
+  mctrl.innerHTML = `
+    <div class="sd-joystick-zone" id="sd-joystick">
+      <div class="sd-joystick-knob" id="sd-joy-knob"></div>
+    </div>
+    <button class="sd-jump-btn" id="sd-jump-btn2">⬆<br>กระโดด</button>
+  `;
+  arena.appendChild(mctrl);
+
+  // Beat style button events
+  topHud.querySelectorAll('.sd-beat-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      topHud.querySelectorAll('.sd-beat-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      activeBeatStyle = btn.getAttribute('data-beat');
+      if (soundEnabled) { startBeatSequencer(); startMelodySequencer(activeBeatStyle); }
+    });
+  });
+
+  // Jump button
+  const jumpBtn2 = document.getElementById('sd-jump-btn2');
+  if (jumpBtn2) {
+    const doJump = () => {
+      if (!sdIsJumping && sdPlayer) { sdVertVel = 0.35; sdIsJumping = true; }
+    };
+    jumpBtn2.addEventListener('touchstart', doJump, { passive: true });
+    jumpBtn2.addEventListener('mousedown', doJump);
+  }
+}
+
+// Override showBeatFeedback to use overlay element if in SD arena
+const _origShowBeatFeedback = showBeatFeedback;
+function showBeatFeedback(text, color) {
+  const ov = document.getElementById('sd-feedback-ov');
+  if (ov && sdScene) {
+    ov.innerText = text;
+    ov.style.color = color || 'var(--rbx-neon-green)';
+    ov.style.opacity = '1';
+    setTimeout(() => { if (ov) ov.style.opacity = '0'; }, 700);
+  } else {
+    const fb = document.getElementById('beattap-feedback');
+    if (!fb) return;
+    fb.innerText = text;
+    fb.style.color = color || 'var(--rbx-neon-green)';
+    fb.style.opacity = '1';
+    setTimeout(() => { fb.style.opacity = '0'; }, 700);
+  }
+}
+
+// === PC Controls for Step Dance ===
+function setupSdPCControls() {
+  const canvas = sdRenderer?.domElement;
+  if (!canvas) return;
+
+  canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+  canvas.addEventListener('mousedown', e => {
+    if (e.button === 2) {
+      sdIsRightDrag = true;
+      sdRightDragLast = { x: e.clientX, y: e.clientY };
+    }
+  });
+  window.addEventListener('mousemove', e => {
+    if (!sdIsRightDrag) return;
+    sdCamYaw += (e.clientX - sdRightDragLast.x) * 0.007;
+    sdRightDragLast = { x: e.clientX, y: e.clientY };
+  });
+  window.addEventListener('mouseup', e => {
+    if (e.button === 2) sdIsRightDrag = false;
+  });
+
+  canvas.addEventListener('wheel', e => {
+    sdCamDist = Math.max(SD_CAM_MIN, Math.min(SD_CAM_MAX, sdCamDist + e.deltaY * 0.02));
+    e.preventDefault();
+  }, { passive: false });
+}
+
+// === Touch Controls — Joystick + Camera Drag + Pinch Zoom ===
+function setupSdTouchControls() {
+  const arena = document.getElementById('sd-arena');
+  if (!arena) return;
+
+  const isJoystickPoint = (x, y) => {
+    const jz = document.getElementById('sd-joystick');
+    if (!jz) return false;
+    const r = jz.getBoundingClientRect();
+    const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+    return Math.sqrt((x-cx)**2 + (y-cy)**2) < r.width / 2 + 24;
+  };
+  const isUIButton = (x, y) => {
+    const el = document.elementFromPoint(x, y);
+    return el && (el.tagName === 'BUTTON' || el.closest('button'));
+  };
+
+  arena.addEventListener('touchstart', e => {
+    e.preventDefault();
+    for (const t of e.changedTouches) {
+      if (isUIButton(t.clientX, t.clientY)) continue;
+      if (sdJoyTouchId === null && isJoystickPoint(t.clientX, t.clientY)) {
+        sdJoyTouchId = t.identifier;
+        const jz = document.getElementById('sd-joystick');
+        if (jz) { const r=jz.getBoundingClientRect(); sdJoyCenterX=r.left+r.width/2; sdJoyCenterY=r.top+r.height/2; }
+      } else if (sdCamTouchId === null) {
+        sdCamTouchId = t.identifier;
+        sdCamTouchLastX = t.clientX;
+      }
+    }
+    if (e.touches.length === 2) {
+      const dx=e.touches[0].clientX-e.touches[1].clientX, dy=e.touches[0].clientY-e.touches[1].clientY;
+      sdPinchStartDist = Math.sqrt(dx*dx+dy*dy);
+    }
+  }, { passive: false });
+
+  arena.addEventListener('touchmove', e => {
+    e.preventDefault();
+    // Pinch zoom
+    if (e.touches.length === 2 && sdPinchStartDist > 0) {
+      const dx=e.touches[0].clientX-e.touches[1].clientX, dy=e.touches[0].clientY-e.touches[1].clientY;
+      const d=Math.sqrt(dx*dx+dy*dy);
+      sdCamDist = Math.max(SD_CAM_MIN, Math.min(SD_CAM_MAX, sdCamDist*(sdPinchStartDist/d)));
+      sdPinchStartDist=d; return;
+    }
+    for (const t of e.changedTouches) {
+      if (t.identifier === sdJoyTouchId) {
+        const maxR=40, dx=t.clientX-sdJoyCenterX, dy=t.clientY-sdJoyCenterY;
+        const dist=Math.sqrt(dx*dx+dy*dy), s=dist>maxR?maxR/dist:1;
+        const knob=document.getElementById('sd-joy-knob');
+        if (knob) knob.style.transform=`translate(calc(-50% + ${dx*s}px), calc(-50% + ${dy*s}px))`;
+        const nx=dx*s/maxR, ny=dy*s/maxR;
+        sdKeys3d['a']=nx<-0.25; sdKeys3d['d']=nx>0.25;
+        sdKeys3d['w']=ny<-0.25; sdKeys3d['s']=ny>0.25;
+      } else if (t.identifier === sdCamTouchId) {
+        sdCamYaw += (t.clientX - sdCamTouchLastX) * 0.008;
+        sdCamTouchLastX = t.clientX;
+      }
+    }
+  }, { passive: false });
+
+  const endTouch = e => {
+    for (const t of e.changedTouches) {
+      if (t.identifier === sdJoyTouchId) {
+        sdJoyTouchId=null;
+        const knob=document.getElementById('sd-joy-knob');
+        if (knob) knob.style.transform='translate(-50%,-50%)';
+        sdKeys3d['a']=sdKeys3d['d']=sdKeys3d['w']=sdKeys3d['s']=false;
+      }
+      if (t.identifier === sdCamTouchId) sdCamTouchId=null;
+    }
+  };
+  arena.addEventListener('touchend', endTouch, { passive: false });
+  arena.addEventListener('touchcancel', endTouch, { passive: false });
 }
 
 function addStepDanceDpad() {
@@ -1989,11 +2218,23 @@ function sdAnimateDanceFloor() {
     }
   }
 
-  // Smooth camera follow player
-  const camTX = sdPlayer.position.x * 0.3, camTZ = sdPlayer.position.z + 7;
-  sdCamera.position.x += (camTX - sdCamera.position.x) * 0.06;
-  sdCamera.position.z += (camTZ - sdCamera.position.z) * 0.06;
-  sdCamera.lookAt(sdPlayer.position.x * 0.3, 0.5, sdPlayer.position.z - 2);
+  // Jump physics in Step Dance
+  if (sdIsJumping || sdPlayer.position.y > 0.9) {
+    sdVertVel -= 0.02;
+    sdPlayer.position.y += sdVertVel;
+    if (sdPlayer.position.y <= 0.9) {
+      sdPlayer.position.y = 0.9; sdVertVel = 0; sdIsJumping = false;
+    }
+  }
+
+  // Orbit camera around player with yaw + distance
+  const camTX = sdPlayer.position.x + Math.sin(sdCamYaw) * sdCamDist;
+  const camTZ = sdPlayer.position.z + Math.cos(sdCamYaw) * sdCamDist;
+  const camTY = sdPlayer.position.y + 5;
+  sdCamera.position.x += (camTX - sdCamera.position.x) * 0.08;
+  sdCamera.position.y += (camTY - sdCamera.position.y) * 0.08;
+  sdCamera.position.z += (camTZ - sdCamera.position.z) * 0.08;
+  sdCamera.lookAt(sdPlayer.position.x, sdPlayer.position.y + 1, sdPlayer.position.z);
 
   sdRenderer.render(sdScene, sdCamera);
 }
@@ -2004,6 +2245,8 @@ function stopStepDance3D() {
   window.removeEventListener('keyup', handleSdKeyUp);
   stopBeatSequencer();
   stopMelodySequencer();
+  exitTrainingFullscreen();
+  sdIsRightDrag = false; sdJoyTouchId = null; sdCamTouchId = null;
   if (sdRenderer) { try { sdRenderer.dispose(); } catch(e) {} sdRenderer = null; }
   sdScene = null;
 }
@@ -2067,8 +2310,164 @@ function initTrampoline3D(tableNum) {
   window.addEventListener('keydown', handleTrampKey);
   window.addEventListener('keyup', e => { trampKeys[e.key.toLowerCase()] = false; });
 
-  addTrampolineControls();
+  buildTrampOverlay();
+  setupTrampPCControls();
+  setupTrampTouchControls();
+  requestTrainingLandscape(document.getElementById('tramp-fullwrap'));
   animateTrampoline3D();
+}
+
+function buildTrampOverlay() {
+  const arena = document.getElementById('tramp-arena');
+  if (!arena) return;
+  arena.querySelectorAll('.sd-overlay-el').forEach(e => e.remove());
+
+  // Rotate hint
+  const rh = document.createElement('div');
+  rh.className = 'sd-rotate-hint sd-overlay-el';
+  rh.innerHTML = `<span class="sd-rotate-icon">📱</span><span>หมุนมือถือให้แนวนอน</span>`;
+  arena.appendChild(rh);
+
+  // Top HUD
+  const topHud = document.createElement('div');
+  topHud.className = 'sd-top-hud sd-overlay-el';
+  topHud.innerHTML = `
+    <div class="sd-question-center">
+      <div class="sd-formula-big" id="tramp-formula">2 × 1 = ?</div>
+      <div class="sd-step-info">ข้อ <span id="tramp-step">1</span>/12 &nbsp;|&nbsp; กระโดดบนแท่นคำตอบที่ถูก!</div>
+    </div>
+  `;
+  arena.appendChild(topHud);
+
+  // Feedback
+  const fb = document.createElement('div');
+  fb.className = 'sd-feedback-overlay sd-overlay-el';
+  fb.id = 'tramp-feedback';
+  arena.appendChild(fb);
+
+  // Mobile controls
+  const mctrl = document.createElement('div');
+  mctrl.className = 'sd-mobile-controls sd-overlay-el';
+  mctrl.innerHTML = `
+    <div class="sd-joystick-zone" id="tramp-joystick">
+      <div class="sd-joystick-knob" id="tramp-joy-knob"></div>
+    </div>
+    <button class="sd-jump-btn" id="tramp-jump-btn-ui">⬆<br>กระโดด</button>
+  `;
+  arena.appendChild(mctrl);
+
+  // Jump button
+  const jb = document.getElementById('tramp-jump-btn-ui');
+  if (jb) {
+    const doJump = () => {
+      if (!trampJumping && trampPlayer) { trampVertVel = 0.45; trampJumping = true; }
+    };
+    jb.addEventListener('touchstart', doJump, { passive: true });
+    jb.addEventListener('mousedown', doJump);
+  }
+}
+
+// Tramp PC controls — right-click camera + scroll zoom
+let trampCamYaw2 = 0, trampIsRightDrag = false, trampRightDragLast = { x: 0, y: 0 };
+let trampJoyTouchId = null, trampCamTouchId2 = null, trampCamTouchLastX2 = 0;
+let trampPinchDist = 0;
+
+function setupTrampPCControls() {
+  const canvas = trampRenderer?.domElement;
+  if (!canvas) return;
+  canvas.addEventListener('contextmenu', e => e.preventDefault());
+  canvas.addEventListener('mousedown', e => {
+    if (e.button === 2) { trampIsRightDrag=true; trampRightDragLast={x:e.clientX,y:e.clientY}; }
+  });
+  window.addEventListener('mousemove', e => {
+    if (!trampIsRightDrag) return;
+    trampCamYaw += (e.clientX-trampRightDragLast.x)*0.007;
+    trampRightDragLast={x:e.clientX,y:e.clientY};
+  });
+  window.addEventListener('mouseup', e => { if(e.button===2) trampIsRightDrag=false; });
+  canvas.addEventListener('wheel', e => {
+    // Zoom: adjust camera distance
+    const cdist = Math.max(8, Math.min(20, ((trampCamera?.position?.distanceTo(trampPlayer?.position||new THREE.Vector3())||12) + e.deltaY*0.02)));
+    if (trampCamera && trampPlayer) {
+      const dir = new THREE.Vector3().subVectors(trampCamera.position, trampPlayer.position).normalize();
+      trampCamera.position.copy(trampPlayer.position).addScaledVector(dir, cdist);
+    }
+    e.preventDefault();
+  }, { passive: false });
+}
+
+function setupTrampTouchControls() {
+  const arena = document.getElementById('tramp-arena');
+  if (!arena) return;
+  const isJoy = (x,y) => {
+    const jz = document.getElementById('tramp-joystick');
+    if (!jz) return false;
+    const r = jz.getBoundingClientRect();
+    const cx=r.left+r.width/2, cy=r.top+r.height/2;
+    return Math.sqrt((x-cx)**2+(y-cy)**2) < r.width/2+24;
+  };
+  const isBtn = (x,y) => { const el=document.elementFromPoint(x,y); return el&&(el.tagName==='BUTTON'||el.closest('button')); };
+  let joyCX=0, joyCY=0;
+
+  arena.addEventListener('touchstart', e => {
+    e.preventDefault();
+    for (const t of e.changedTouches) {
+      if (isBtn(t.clientX,t.clientY)) continue;
+      if (trampJoyTouchId===null && isJoy(t.clientX,t.clientY)) {
+        trampJoyTouchId=t.identifier;
+        const jz=document.getElementById('tramp-joystick');
+        if (jz) { const r=jz.getBoundingClientRect(); joyCX=r.left+r.width/2; joyCY=r.top+r.height/2; }
+      } else if (trampCamTouchId2===null) {
+        trampCamTouchId2=t.identifier; trampCamTouchLastX2=t.clientX;
+      }
+    }
+    if (e.touches.length===2) {
+      const dx=e.touches[0].clientX-e.touches[1].clientX, dy=e.touches[0].clientY-e.touches[1].clientY;
+      trampPinchDist=Math.sqrt(dx*dx+dy*dy);
+    }
+  }, { passive:false });
+
+  arena.addEventListener('touchmove', e => {
+    e.preventDefault();
+    if (e.touches.length===2 && trampPinchDist>0) {
+      const dx=e.touches[0].clientX-e.touches[1].clientX, dy=e.touches[0].clientY-e.touches[1].clientY;
+      const d=Math.sqrt(dx*dx+dy*dy);
+      if (trampCamera && trampPlayer) {
+        const ratio=trampPinchDist/d;
+        const dir=new THREE.Vector3().subVectors(trampCamera.position,trampPlayer.position);
+        const newLen=Math.max(8,Math.min(20,dir.length()*ratio));
+        trampCamera.position.copy(trampPlayer.position).addScaledVector(dir.normalize(),newLen);
+      }
+      trampPinchDist=d; return;
+    }
+    for (const t of e.changedTouches) {
+      if (t.identifier===trampJoyTouchId) {
+        const maxR=40,dx=t.clientX-joyCX,dy=t.clientY-joyCY;
+        const dist=Math.sqrt(dx*dx+dy*dy),s=dist>maxR?maxR/dist:1;
+        const knob=document.getElementById('tramp-joy-knob');
+        if (knob) knob.style.transform=`translate(calc(-50% + ${dx*s}px),calc(-50% + ${dy*s}px))`;
+        const nx=dx*s/maxR, ny=dy*s/maxR;
+        trampKeys['a']=nx<-0.25; trampKeys['d']=nx>0.25;
+        trampKeys['w']=ny<-0.25; trampKeys['s']=ny>0.25;
+      } else if (t.identifier===trampCamTouchId2) {
+        trampCamYaw+=(t.clientX-trampCamTouchLastX2)*0.008;
+        trampCamTouchLastX2=t.clientX;
+      }
+    }
+  }, { passive:false });
+
+  const endT = e => {
+    for (const t of e.changedTouches) {
+      if (t.identifier===trampJoyTouchId) {
+        trampJoyTouchId=null;
+        const k=document.getElementById('tramp-joy-knob'); if(k) k.style.transform='translate(-50%,-50%)';
+        trampKeys['a']=trampKeys['d']=trampKeys['w']=trampKeys['s']=false;
+      }
+      if (t.identifier===trampCamTouchId2) trampCamTouchId2=null;
+    }
+  };
+  arena.addEventListener('touchend', endT, { passive:false });
+  arena.addEventListener('touchcancel', endT, { passive:false });
 }
 
 function addTrampolineControls() {
@@ -2358,6 +2757,8 @@ function showTrampBlockViz(tableNum, mult) {
 function stopTrampoline3D() {
   if (trampAnimId) { cancelAnimationFrame(trampAnimId); trampAnimId = null; }
   window.removeEventListener('keydown', handleTrampKey);
+  exitTrainingFullscreen();
+  trampIsRightDrag=false; trampJoyTouchId=null; trampCamTouchId2=null;
   if (trampRenderer) { try { trampRenderer.dispose(); } catch(e) {} trampRenderer = null; }
   trampScene = null;
 }
