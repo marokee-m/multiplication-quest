@@ -68,15 +68,19 @@ body {
    ========================================================================== */
 .roblox-header {
   background-color: var(--rbx-bg-darker);
-  height: 60px;
+  min-height: 60px;
+  height: auto;
   display: flex;
+  flex-wrap: wrap;          /* wrap บนมือถือ */
   justify-content: space-between;
   align-items: center;
-  padding: 0 20px;
+  padding: 8px 14px;
+  gap: 6px;
   border-bottom: 2px solid var(--rbx-border-color);
   position: sticky;
   top: 0;
   z-index: 1000;
+  overflow: hidden;         /* ไม่ให้ scroll ซ้าย-ขวา */
 }
 
 .roblox-logo-container {
@@ -118,8 +122,13 @@ body {
 .header-right {
   display: flex;
   align-items: center;
-  gap: 15px;
+  gap: 8px;
+  flex-wrap: wrap;
 }
+
+/* ป้องกัน horizontal scroll ทั้งหน้า */
+body { overflow-x: hidden; }
+* { box-sizing: border-box; }
 
 /* Nickname Box */
 .player-profile-name {
@@ -2353,6 +2362,16 @@ body {
    Responsive Layout
    ========================================================================== */
 @media (max-width: 600px) {
+  /* Header compact บนมือถือ */
+  .roblox-header { padding: 6px 10px; gap: 4px; }
+  .logo-text { font-size: 0.8rem; letter-spacing: 0; }
+  .roblox-tilt-logo { width: 22px; height: 22px; }
+  .player-profile-name { padding: 3px 8px; }
+  .player-profile-name input { width: 80px; font-size: 0.82rem; }
+  .robux-counter-container { padding: 4px 10px; }
+  #robux-balance { font-size: 0.95rem; }
+  .header-icon-btn { width: 30px; height: 30px; font-size: 0.95rem; }
+
   .game-wrapper { padding: 8px; gap: 8px; flex-direction: column; }
   .avatar-sidebar { width: 100%; flex-direction: row; flex-wrap: wrap; padding: 10px; min-height: auto; }
   .avatar-viewer { height: 160px; flex: 1; min-width: 140px; }
