@@ -2029,8 +2029,81 @@ body { overflow-x: hidden; }
 }
 
 /* ==========================================================================
-   Training 3D Full-width Wrapper (Step Dance & Trampoline)
+   Training Mode Picker + Camera Controls + 3D Wrapper
    ========================================================================== */
+/* Training Mode Picker */
+.training-mode-picker {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 16px; padding: 24px 16px; animation: fadeInOverlay 0.25s ease;
+}
+.picker-header { text-align: center; }
+.picker-icon-row { font-size: 2.5rem; }
+.picker-header h3 { font-size: 1.3rem; font-weight: 900; color: var(--rbx-neon-cyan); margin: 4px 0; }
+.picker-header p  { font-size: 0.85rem; color: var(--rbx-text-muted); }
+.picker-cards { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; }
+.picker-card {
+  background: var(--rbx-bg-darker); border: 2px solid var(--rbx-border-color);
+  border-radius: 14px; padding: 20px 22px; min-width: 140px;
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  cursor: pointer; font-family: var(--font-gaming);
+  transition: border-color 0.18s, background 0.18s, transform 0.1s, box-shadow 0.18s;
+}
+.picker-card:hover {
+  border-color: var(--rbx-neon-cyan); background: rgba(0,255,255,0.08);
+  transform: translateY(-4px); box-shadow: 0 8px 24px rgba(0,255,255,0.18);
+}
+.picker-card:active { transform: scale(0.96); }
+.picker-mode-icon { font-size: 2.5rem; }
+.picker-mode-name { font-size: 1.0rem; font-weight: 900; color: #fff; text-align: center; }
+.picker-mode-desc { font-size: 0.75rem; color: var(--rbx-text-muted); text-align: center; line-height: 1.4; }
+.picker-badge {
+  background: rgba(30,99,230,0.25); border: 1px solid var(--rbx-blue);
+  color: var(--rbx-blue-hover); border-radius: 20px; padding: 2px 10px;
+  font-size: 0.7rem; font-weight: 700;
+}
+/* Zone hint labels */
+.zone-hint-left, .zone-hint-right {
+  position: absolute;
+  bottom: 10px;
+  font-size: 0.6rem;
+  color: rgba(255,255,255,0.35);
+  pointer-events: none;
+  z-index: 30;
+  font-family: var(--font-gaming);
+}
+.zone-hint-left  { left: 10px; }
+.zone-hint-right { right: 10px; }
+
+/* Floating joystick — starts hidden, appears at touch point */
+.sd-joystick-zone {
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+/* Camera controls */
+.cam-pitch-wrap {
+  position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+  z-index: 100; display: flex; flex-direction: column; align-items: center; gap: 3px;
+  pointer-events: all; background: rgba(0,0,0,0.45); border-radius: 12px; padding: 5px;
+}
+.cam-pitch-label { font-size: 0.58rem; color: rgba(255,255,255,0.6); }
+input[type=range].cam-pitch-slider {
+  -webkit-appearance: slider-vertical; appearance: slider-vertical;
+  writing-mode: vertical-lr; direction: rtl;
+  width: 24px; height: 80px; cursor: pointer;
+  accent-color: var(--rbx-neon-cyan); opacity: 0.8;
+}
+input[type=range].cam-pitch-slider:hover { opacity: 1; }
+.cam-fov-wrap {
+  position: absolute; bottom: 46px; left: 50%; transform: translateX(-50%);
+  z-index: 100; display: flex; align-items: center; gap: 6px;
+  background: rgba(0,0,0,0.55); border: 1px solid rgba(255,255,255,0.18);
+  border-radius: 20px; padding: 4px 10px; pointer-events: all;
+}
+.cam-fov-label { font-size: 0.62rem; color: rgba(255,255,255,0.7); white-space: nowrap; }
+input[type=range].cam-fov-slider { width: 75px; cursor: pointer; accent-color: var(--rbx-yellow); opacity: 0.82; }
+input[type=range].cam-fov-slider:hover { opacity: 1; }
+
 .training-3d-fullscreen {
   position: relative;
   width: 100%;

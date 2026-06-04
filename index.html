@@ -54,7 +54,7 @@
   <!-- ========== Three.js 3D WebGL Library ========== -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 
-  <link rel="stylesheet" href="style.css?v=2.8">
+  <link rel="stylesheet" href="style.css?v=3.0">
 </head>
 <body>
 
@@ -195,22 +195,43 @@
             </button>
           </div>
 
-          <!-- Tab Content Views -->
-          <div class="tab-content-container">
+          <!-- Mode Picker (shows after table selection, before activity) -->
+          <div id="training-mode-picker" class="training-mode-picker" style="display:none;">
+            <div class="picker-header">
+              <div class="picker-icon-row">🎮</div>
+              <h3>กำลังเรียนรู้: <span class="picker-table-label">แม่ 2</span></h3>
+              <p>เลือกกิจกรรมที่ต้องการเล่น</p>
+            </div>
+            <div class="picker-cards">
+              <button class="picker-card" id="pick-stepdance-btn">
+                <div class="picker-mode-icon">🎵</div>
+                <div class="picker-mode-name">สเต็ปแดนซ์</div>
+                <div class="picker-mode-desc">เดินตามจังหวะ<br>ไปยัง tile สี</div>
+                <div class="picker-badge">ฝึกจังหวะ</div>
+              </button>
+              <button class="picker-card" id="pick-trampoline-btn">
+                <div class="picker-mode-icon">🏃</div>
+                <div class="picker-mode-name">กระโดดเช็กคำตอบ</div>
+                <div class="picker-mode-desc">วิ่ง &amp; กระโดด<br>บนแท่นคำตอบ</div>
+                <div class="picker-badge">ฝึกการคิด</div>
+              </button>
+            </div>
+          </div>
 
-            <!-- Activity 1: Step Dance — Full-width 3D, overlays inside -->
+          <!-- Tab Content Views -->
+          <div class="tab-content-container" id="training-tabs-container">
+
+            <!-- Activity 1: Step Dance -->
             <div id="tab-stepdance" class="tab-view active">
               <div class="training-3d-fullscreen" id="sd-fullwrap">
                 <div class="stepdance-arena" id="sd-arena"></div>
-                <!-- Overlays injected by JS -->
               </div>
             </div>
 
-            <!-- Activity 2: Answer Trampoline — Full-width 3D -->
+            <!-- Activity 2: Answer Trampoline -->
             <div id="tab-trampoline" class="tab-view">
               <div class="training-3d-fullscreen" id="tramp-fullwrap">
-                <div class="stepdance-arena" id="tramp-arena"></div>
-                <!-- Overlays injected by JS -->
+                <div class="stepdance-arena" id="tramp-arena" style="background:linear-gradient(180deg,#0a1628,#1a2a4a);"></div>
               </div>
             </div>
 
@@ -564,6 +585,6 @@
   <button id="btn-exit-fullscreen-fixed" title="ออกจากเกม">✕</button>
 
   <!-- Include App Logic -->
-  <script src="app.js?v=2.8"></script>
+  <script src="app.js?v=3.0"></script>
 </body>
 </html>

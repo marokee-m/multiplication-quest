@@ -897,10 +897,10 @@ function updateAvatarEquipment() {
 // ==========================================================================
 let bossController = null, chillController = null, dressController = null;
 
-// Per-mode mutable camera state (maxD increased for pinch zoom out)
-const bossCamState  = { yaw: 0, dist: 13, minD: 5, maxD: 45 };
-const chillCamState = { yaw: 0, dist: 13, minD: 5, maxD: 45 };
-const dressCamState = { yaw: 0, dist: 10, minD: 4, maxD: 40 };
+// Per-mode mutable camera state — includes pitch (°) and fov (°)
+const bossCamState  = { yaw: 0, pitch: 22, dist: 13, minD: 5, maxD: 45, fov: 55, minFov: 30, maxFov: 95 };
+const chillCamState = { yaw: 0, pitch: 40, dist: 13, minD: 5, maxD: 45, fov: 52, minFov: 30, maxFov: 95 };
+const dressCamState = { yaw: 0, pitch: 25, dist: 10, minD: 4, maxD: 40, fov: 52, minFov: 30, maxFov: 95 };
 
 /**
  * createArenaController — universal cross-platform input handler
@@ -910,13 +910,28 @@ const dressCamState = { yaw: 0, dist: 10, minD: 4, maxD: 40 };
  */
 function createArenaController({ canvas, keys, camState, onJump, container, joystickId, jumpBtnId }) {
   // --- PC ---
-  let pcDrag = false, pcLastX = 0;
+  let pcDrag = false, pcLastX = 0, pcLastY = 0;
   const _ctx  = e => e.preventDefault();
-  const _mdn  = e => { if (e.button === 2) { pcDrag = true; pcLastX = e.clientX; } };
-  const _mmv  = e => { if (pcDrag) { camState.yaw += (e.clientX - pcLastX) * 0.007; pcLastX = e.clientX; } };
+  const _mdn  = e => { if (e.button === 2) { pcDrag = true; pcLastX = e.clientX; pcLastY = e.clientY; } };
+  const _mmv  = e => {
+    if (pcDrag) {
+      camState.yaw += (e.clientX - pcLastX) * 0.007;
+      // Vertical drag = pitch (clamped -30 to 60°)
+      if (camState.pitch !== undefined) {
+        camState.pitch = Math.max(-30, Math.min(60, camState.pitch - (e.clientY - pcLastY) * 0.3));
+      }
+      pcLastX = e.clientX; pcLastY = e.clientY;
+    }
+  };
   const _mup  = e => { if (e.button === 2) pcDrag = false; };
   const _whl  = e => {
-    camState.dist = Math.max(camState.minD, Math.min(camState.maxD, camState.dist + e.deltaY * 0.02));
+    if (e.shiftKey && camState.fov !== undefined) {
+      // Shift+Scroll = adjust FOV
+      camState.fov = Math.max(camState.minFov || 30, Math.min(camState.maxFov || 95, camState.fov + e.deltaY * 0.06));
+    } else {
+      // Regular scroll = zoom distance
+      camState.dist = Math.max(camState.minD, Math.min(camState.maxD, camState.dist + e.deltaY * 0.02));
+    }
     e.preventDefault();
   };
   const _kdn  = e => {
@@ -938,7 +953,7 @@ function createArenaController({ canvas, keys, camState, onJump, container, joys
 
   // --- Mobile/Touch ---
   let joyId = null, camTId = null;
-  let joyCX = 0, joyCY = 0, camLastTX = 0, pinchD = 0;
+  let joyCX = 0, joyCY = 0, camLastTX = 0, camLastTY = 0, pinchD = 0;
 
   const inJoystick = (x, y) => {
     const el = joystickId ? document.getElementById(joystickId) : null;
@@ -952,18 +967,36 @@ function createArenaController({ canvas, keys, camState, onJump, container, joys
   };
 
   const _ts = e => {
-    // Only prevent default if NOT touching a UI button (so buttons can still fire clicks)
-    const hasUITouch = Array.from(e.changedTouches).some(t => isUIBtn(t.clientX, t.clientY));
-    if (!hasUITouch) e.preventDefault();
+    const hasUI = Array.from(e.changedTouches).some(t => isUIBtn(t.clientX, t.clientY));
+    if (!hasUI) e.preventDefault();
+
+    const cRect = canvas?.getBoundingClientRect() || { left: 0, width: window.innerWidth };
+    const midX  = cRect.left + cRect.width / 2;
 
     for (const t of e.changedTouches) {
       if (isUIBtn(t.clientX, t.clientY)) continue;
-      if (joyId === null && inJoystick(t.clientX, t.clientY)) {
+      const isLeft = t.clientX < midX;
+
+      if (isLeft && joyId === null) {
+        // LEFT HALF = Movement Zone → floating joystick at touch point
         joyId = t.identifier;
-        const el = joystickId ? document.getElementById(joystickId) : null;
-        if (el) { const r=el.getBoundingClientRect(); joyCX=r.left+r.width/2; joyCY=r.top+r.height/2; }
-      } else if (camTId === null) {
-        camTId = t.identifier; camLastTX = t.clientX;
+        joyCX = t.clientX; joyCY = t.clientY;
+
+        // Show floating joystick at touch position
+        const jzone = joystickId ? document.getElementById(joystickId) : null;
+        if (jzone && jzone.parentElement) {
+          const pRect = jzone.parentElement.getBoundingClientRect();
+          jzone.style.position = 'absolute';
+          jzone.style.left     = `${t.clientX - pRect.left - 44}px`;
+          jzone.style.top      = `${t.clientY - pRect.top  - 44}px`;
+          jzone.style.opacity  = '0.85';
+        }
+        const knob = joystickId ? document.getElementById(joystickId+'-knob') : null;
+        if (knob) knob.style.transform = 'translate(-50%,-50%)';
+
+      } else if (!isLeft && camTId === null) {
+        // RIGHT HALF = Camera Zone → rotate camera
+        camTId = t.identifier; camLastTX = t.clientX; camLastTY = t.clientY;
       }
     }
     if (e.touches.length === 2) {
@@ -989,7 +1022,11 @@ function createArenaController({ canvas, keys, camState, onJump, container, joys
         keys['a']=nx<-0.22; keys['d']=nx>0.22; keys['w']=ny<-0.22; keys['s']=ny>0.22;
       } else if (t.identifier === camTId) {
         camState.yaw += (t.clientX - camLastTX) * 0.008;
-        camLastTX = t.clientX;
+        // Vertical touch drag = pitch (clamped)
+        if (camState.pitch !== undefined) {
+          camState.pitch = Math.max(-30, Math.min(60, camState.pitch - (t.clientY - camLastTY) * 0.25));
+        }
+        camLastTX = t.clientX; camLastTY = t.clientY;
       }
     }
   };
@@ -997,8 +1034,10 @@ function createArenaController({ canvas, keys, camState, onJump, container, joys
     for (const t of e.changedTouches) {
       if (t.identifier === joyId) {
         joyId = null;
-        const knob = joystickId ? document.getElementById(joystickId+'-knob') : null;
-        if (knob) knob.style.transform='translate(-50%,-50%)';
+        const knob  = joystickId ? document.getElementById(joystickId+'-knob') : null;
+        const jzone = joystickId ? document.getElementById(joystickId) : null;
+        if (knob)  knob.style.transform = 'translate(-50%,-50%)';
+        if (jzone) jzone.style.opacity  = '0'; // hide floating joystick
         keys['a']=keys['d']=keys['w']=keys['s']=false;
       }
       if (t.identifier === camTId) camTId = null;
@@ -1016,14 +1055,18 @@ function createArenaController({ canvas, keys, camState, onJump, container, joys
   if (container && joystickId && !document.getElementById(joystickId)) {
     const ov = document.createElement('div');
     ov.className = 'arena-mobile-ctrl sd-overlay-el';
-    ov.style.cssText = 'position:absolute;bottom:0;left:0;right:0;display:flex;justify-content:space-between;align-items:flex-end;padding:10px 14px;pointer-events:none;z-index:50;';
+    ov.style.cssText = 'position:absolute;inset:0;pointer-events:none;z-index:50;';
+    // Zone hint labels
     ov.innerHTML = `
-      <div id="${joystickId}" class="sd-joystick-zone" style="pointer-events:all">
+      <div class="zone-hint-left">👆 เดิน</div>
+      <div class="zone-hint-right">📷 กล้อง</div>
+      <div style="position:absolute;left:0;top:0;bottom:0;width:50%;border-right:1px solid rgba(100,180,255,0.12);pointer-events:none;"></div>
+      <div id="${joystickId}" class="sd-joystick-zone" style="pointer-events:all;position:absolute;opacity:0;left:44px;bottom:70px;">
         <div id="${joystickId}-knob" class="sd-joystick-knob"></div>
       </div>
       ${jumpBtnId
-        ? `<button id="${jumpBtnId}" class="sd-jump-btn" style="pointer-events:all">⬆<br>กระโดด</button>`
-        : '<div style="width:68px"></div>'}
+        ? `<button id="${jumpBtnId}" class="sd-jump-btn" style="pointer-events:all;position:absolute;right:14px;bottom:14px;">⬆<br>กระโดด</button>`
+        : ''}
     `;
     container.appendChild(ov);
     if (jumpBtnId && onJump) {
@@ -1054,6 +1097,52 @@ function createArenaController({ canvas, keys, camState, onJump, container, joys
       window.removeEventListener('keyup', _kup);
     }
   };
+}
+
+// ==========================================================================
+// Camera Utility — apply camState (yaw + pitch + dist + fov) to a THREE camera
+// ==========================================================================
+function applyCamState(camera, playerPos, cs, lerpF = 0.08) {
+  const pitchRad = ((cs.pitch || 20) * Math.PI / 180);
+  const hDist = cs.dist * Math.cos(pitchRad);
+  const vDist = cs.dist * Math.sin(pitchRad);
+  const tX = playerPos.x + Math.sin(cs.yaw) * hDist;
+  const tY = playerPos.y + vDist;
+  const tZ = playerPos.z + Math.cos(cs.yaw) * hDist;
+  camera.position.x += (tX - camera.position.x) * lerpF;
+  camera.position.y += (tY - camera.position.y) * lerpF;
+  camera.position.z += (tZ - camera.position.z) * lerpF;
+  camera.lookAt(playerPos.x, playerPos.y + 1.2, playerPos.z);
+  if (cs.fov && Math.abs(camera.fov - cs.fov) > 0.5) {
+    camera.fov = cs.fov; camera.updateProjectionMatrix();
+  }
+}
+
+// Add camera control overlay (pitch slider + FOV slider) to a 3D container
+function addCamControlsOverlay(container, cs) {
+  container.querySelectorAll('.cam-pitch-wrap,.cam-fov-wrap').forEach(e => e.remove());
+
+  // Pitch slider (vertical, right side)
+  const pw = document.createElement('div');
+  pw.className = 'cam-pitch-wrap sd-overlay-el';
+  pw.innerHTML = `
+    <span class="cam-pitch-label">มุม</span>
+    <input type="range" class="cam-pitch-slider" id="cam-pitch-${Date.now()}"
+      min="-30" max="60" value="${cs.pitch || 20}" step="1">
+  `;
+  container.appendChild(pw);
+  pw.querySelector('input').addEventListener('input', e => { cs.pitch = +e.target.value; });
+
+  // FOV slider (horizontal, bottom center)
+  const fw = document.createElement('div');
+  fw.className = 'cam-fov-wrap sd-overlay-el';
+  fw.innerHTML = `
+    <span class="cam-fov-label">FOV</span>
+    <input type="range" class="cam-fov-slider" id="cam-fov-${Date.now()}"
+      min="${cs.minFov||30}" max="${cs.maxFov||95}" value="${cs.fov||55}" step="1">
+  `;
+  container.appendChild(fw);
+  fw.querySelector('input').addEventListener('input', e => { cs.fov = +e.target.value; });
 }
 
 // ==========================================================================
@@ -2122,6 +2211,9 @@ function buildSdOverlay() {
   sdExitBtn.addEventListener('touchend', e => { e.preventDefault(); e.stopPropagation(); doSdExit(); }, { passive: false });
   arena.appendChild(sdExitBtn);
 
+  // Camera controls overlay (pitch slider + FOV slider)
+  addCamControlsOverlay(arena, sdCamState);
+
   // iOS audio unlock on first interaction
   arena.addEventListener('touchstart', () => unlockIOSAudio(), { once: true, passive: true });
 
@@ -2182,7 +2274,9 @@ function setupSdPCControls() {
   });
   window.addEventListener('mousemove', e => {
     if (!sdIsRightDrag) return;
-    sdCamYaw += (e.clientX - sdRightDragLast.x) * 0.007;
+    // Update sdCamState (not old sdCamYaw variable)
+    sdCamState.yaw += (e.clientX - sdRightDragLast.x) * 0.007;
+    sdCamState.pitch = Math.max(-30, Math.min(60, sdCamState.pitch - (e.clientY - sdRightDragLast.y) * 0.3));
     sdRightDragLast = { x: e.clientX, y: e.clientY };
   });
   window.addEventListener('mouseup', e => {
@@ -2190,7 +2284,11 @@ function setupSdPCControls() {
   });
 
   canvas.addEventListener('wheel', e => {
-    sdCamDist = Math.max(SD_CAM_MIN, Math.min(SD_CAM_MAX, sdCamDist + e.deltaY * 0.02));
+    if (e.shiftKey) {
+      sdCamState.fov = Math.max(sdCamState.minFov, Math.min(sdCamState.maxFov, sdCamState.fov + e.deltaY * 0.06));
+    } else {
+      sdCamState.dist = Math.max(sdCamState.minD, Math.min(sdCamState.maxD, sdCamState.dist + e.deltaY * 0.02));
+    }
     e.preventDefault();
   }, { passive: false });
 }
@@ -2212,65 +2310,88 @@ function setupSdTouchControls() {
     return el && (el.tagName === 'BUTTON' || el.closest('button'));
   };
 
+  // === LEFT/RIGHT SPLIT TOUCH SYSTEM ===
+  let sdPinchDist2 = 0;
+  let sdCamLastTY = 0;
+
   arena.addEventListener('touchstart', e => {
-    // Don't preventDefault on UI buttons so they can receive click events
     const hasUI = Array.from(e.changedTouches).some(t => isUIButton(t.clientX, t.clientY));
     if (!hasUI) e.preventDefault();
+
+    const aRect = arena.getBoundingClientRect();
+    const midX  = aRect.left + aRect.width / 2;
+
     for (const t of e.changedTouches) {
       if (isUIButton(t.clientX, t.clientY)) continue;
-      if (sdJoyTouchId === null && isJoystickPoint(t.clientX, t.clientY)) {
+      const isLeft = t.clientX < midX;
+
+      if (isLeft && sdJoyTouchId === null) {
+        // LEFT = Movement Zone (floating joystick)
         sdJoyTouchId = t.identifier;
+        sdJoyCenterX = t.clientX; sdJoyCenterY = t.clientY;
         const jz = document.getElementById('sd-joystick');
-        if (jz) { const r=jz.getBoundingClientRect(); sdJoyCenterX=r.left+r.width/2; sdJoyCenterY=r.top+r.height/2; }
-      } else if (sdCamTouchId === null) {
+        if (jz) {
+          jz.style.position = 'absolute';
+          jz.style.left     = `${t.clientX - aRect.left - 44}px`;
+          jz.style.top      = `${t.clientY - aRect.top  - 44}px`;
+          jz.style.opacity  = '0.85';
+        }
+        const knob = document.getElementById('sd-joy-knob');
+        if (knob) knob.style.transform = 'translate(-50%,-50%)';
+      } else if (!isLeft && sdCamTouchId === null) {
+        // RIGHT = Camera Zone
         sdCamTouchId = t.identifier;
-        sdCamTouchLastX = t.clientX;
+        sdCamTouchLastX = t.clientX; sdCamLastTY = t.clientY;
       }
     }
     if (e.touches.length === 2) {
       const dx=e.touches[0].clientX-e.touches[1].clientX, dy=e.touches[0].clientY-e.touches[1].clientY;
-      sdPinchStartDist = Math.sqrt(dx*dx+dy*dy);
+      sdPinchDist2 = Math.sqrt(dx*dx+dy*dy);
     }
   }, { passive: false });
 
   arena.addEventListener('touchmove', e => {
     e.preventDefault();
-    // Pinch zoom
-    if (e.touches.length === 2 && sdPinchStartDist > 0) {
+    // Pinch = zoom
+    if (e.touches.length === 2 && sdPinchDist2 > 0) {
       const dx=e.touches[0].clientX-e.touches[1].clientX, dy=e.touches[0].clientY-e.touches[1].clientY;
       const d=Math.sqrt(dx*dx+dy*dy);
-      sdCamDist = Math.max(SD_CAM_MIN, Math.min(SD_CAM_MAX, sdCamDist*(sdPinchStartDist/d)));
-      sdPinchStartDist=d; return;
+      sdCamState.dist = Math.max(sdCamState.minD, Math.min(sdCamState.maxD, sdCamState.dist*(sdPinchDist2/d)));
+      sdPinchDist2=d; return;
     }
     for (const t of e.changedTouches) {
       if (t.identifier === sdJoyTouchId) {
-        const maxR=40, dx=t.clientX-sdJoyCenterX, dy=t.clientY-sdJoyCenterY;
+        const maxR=42, dx=t.clientX-sdJoyCenterX, dy=t.clientY-sdJoyCenterY;
         const dist=Math.sqrt(dx*dx+dy*dy), s=dist>maxR?maxR/dist:1;
         const knob=document.getElementById('sd-joy-knob');
-        if (knob) knob.style.transform=`translate(calc(-50% + ${dx*s}px), calc(-50% + ${dy*s}px))`;
+        if (knob) knob.style.transform=`translate(calc(-50% + ${dx*s}px),calc(-50% + ${dy*s}px))`;
         const nx=dx*s/maxR, ny=dy*s/maxR;
-        sdKeys3d['a']=nx<-0.25; sdKeys3d['d']=nx>0.25;
-        sdKeys3d['w']=ny<-0.25; sdKeys3d['s']=ny>0.25;
+        sdKeys3d['a']=nx<-0.22; sdKeys3d['d']=nx>0.22;
+        sdKeys3d['w']=ny<-0.22; sdKeys3d['s']=ny>0.22;
       } else if (t.identifier === sdCamTouchId) {
-        sdCamYaw += (t.clientX - sdCamTouchLastX) * 0.008;
-        sdCamTouchLastX = t.clientX;
+        // RIGHT = camera yaw + pitch via sdCamState
+        sdCamState.yaw  += (t.clientX - sdCamTouchLastX) * 0.008;
+        sdCamState.pitch = Math.max(-30, Math.min(60, sdCamState.pitch - (t.clientY - sdCamLastTY) * 0.25));
+        sdCamTouchLastX = t.clientX; sdCamLastTY = t.clientY;
       }
     }
   }, { passive: false });
 
-  const endTouch = e => {
+  const endSdTouch = e => {
     for (const t of e.changedTouches) {
       if (t.identifier === sdJoyTouchId) {
-        sdJoyTouchId=null;
-        const knob=document.getElementById('sd-joy-knob');
-        if (knob) knob.style.transform='translate(-50%,-50%)';
+        sdJoyTouchId = null;
+        const knob  = document.getElementById('sd-joy-knob');
+        const jzone = document.getElementById('sd-joystick');
+        if (knob)  knob.style.transform = 'translate(-50%,-50%)';
+        if (jzone) jzone.style.opacity  = '0';
         sdKeys3d['a']=sdKeys3d['d']=sdKeys3d['w']=sdKeys3d['s']=false;
       }
-      if (t.identifier === sdCamTouchId) sdCamTouchId=null;
+      if (t.identifier === sdCamTouchId) sdCamTouchId = null;
     }
   };
-  arena.addEventListener('touchend', endTouch, { passive: false });
-  arena.addEventListener('touchcancel', endTouch, { passive: false });
+  arena.addEventListener('touchend',   endSdTouch, { passive: false });
+  arena.addEventListener('touchcancel',endSdTouch, { passive: false });
 }
 
 function addStepDanceDpad() {
@@ -2491,14 +2612,8 @@ function sdAnimateDanceFloor() {
     }
   }
 
-  // Orbit camera around player with yaw + distance
-  const camTX = sdPlayer.position.x + Math.sin(sdCamYaw) * sdCamDist;
-  const camTZ = sdPlayer.position.z + Math.cos(sdCamYaw) * sdCamDist;
-  const camTY = sdPlayer.position.y + 5;
-  sdCamera.position.x += (camTX - sdCamera.position.x) * 0.08;
-  sdCamera.position.y += (camTY - sdCamera.position.y) * 0.08;
-  sdCamera.position.z += (camTZ - sdCamera.position.z) * 0.08;
-  sdCamera.lookAt(sdPlayer.position.x, sdPlayer.position.y + 1, sdPlayer.position.z);
+  // Orbit camera with pitch + FOV (sdCamState)
+  applyCamState(sdCamera, sdPlayer.position, sdCamState, 0.08);
 
   sdRenderer.render(sdScene, sdCamera);
 }
@@ -2718,6 +2833,9 @@ function buildTrampOverlay() {
   `;
   arena.appendChild(mctrl);
 
+  // Camera controls overlay
+  addCamControlsOverlay(arena, trampCamState);
+
   // Jump button
   const jb = document.getElementById('tramp-jump-btn-ui');
   if (jb) {
@@ -2730,8 +2848,10 @@ function buildTrampOverlay() {
 }
 
 // Tramp PC controls — right-click camera + scroll zoom
-let trampCtrl = null; // shared controller instance for trampoline
-const trampCamState = { yaw: 0, dist: 11, minD: 4, maxD: 40 }; // wider zoom range
+let trampCtrl = null;
+const trampCamState = { yaw: 0, pitch: 28, dist: 11, minD: 4, maxD: 40, fov: 50, minFov: 30, maxFov: 95 };
+// Step Dance cam state
+const sdCamState = { yaw: 0, pitch: 18, dist: 8, minD: 3, maxD: 35, fov: 55, minFov: 30, maxFov: 95 };
 let trampCamYaw2 = 0, trampIsRightDrag = false, trampRightDragLast = { x: 0, y: 0 }; // legacy (kept for compat)
 let trampJoyTouchId = null, trampCamTouchId2 = null, trampCamTouchLastX2 = 0;
 let trampPinchDist = 0;
@@ -3039,14 +3159,7 @@ function animateTrampoline3D() {
 
   // Camera follow with orbit
   if (trampPlayer && trampCamera) {
-    // Smooth orbit camera using shared trampCamState
-    const tTX = trampPlayer.position.x + Math.sin(trampCamState.yaw) * trampCamState.dist;
-    const tTY = trampPlayer.position.y + 9;
-    const tTZ = trampPlayer.position.z + Math.cos(trampCamState.yaw) * trampCamState.dist;
-    trampCamera.position.x += (tTX - trampCamera.position.x) * 0.08;
-    trampCamera.position.y += (tTY - trampCamera.position.y) * 0.08;
-    trampCamera.position.z += (tTZ - trampCamera.position.z) * 0.08;
-    trampCamera.lookAt(trampPlayer.position.x, trampPlayer.position.y + 1, trampPlayer.position.z);
+    applyCamState(trampCamera, trampPlayer.position, trampCamState, 0.08);
   }
 
   // Rotate platform labels to face camera
@@ -3145,6 +3258,24 @@ function stopTrampoline3D() {
   trampScene = null;
 }
 
+function showTrainingModePicker(tableNum) {
+  const picker = document.getElementById('training-mode-picker');
+  const tabs   = document.getElementById('training-tabs-container');
+  if (picker) {
+    picker.style.display = 'flex';
+    const lbl = picker.querySelector('.picker-table-label');
+    if (lbl) lbl.innerText = `แม่ ${tableNum}`;
+  }
+  if (tabs) tabs.style.display = 'none';
+}
+
+function hideTrainingModePicker() {
+  const picker = document.getElementById('training-mode-picker');
+  const tabs   = document.getElementById('training-tabs-container');
+  if (picker) picker.style.display = 'none';
+  if (tabs)   tabs.style.display = '';
+}
+
 // ==========================================================================
 // 5. Training Room Interface & Logic
 // ==========================================================================
@@ -3176,15 +3307,9 @@ function selectTrainingTable(tableNum) {
   document.getElementById("training-area-wrapper").style.display = "flex";
   document.getElementById("current-training-table-label").innerText = `แม่ ${tableNum}`;
 
-  const activeTab = document.querySelector(".tab-btn.active")?.getAttribute("data-tab");
-  if (activeTab === "tab-stepdance" || !activeTab) {
-    stopStepDance3D(); stopTrampoline3D();
-    if (soundEnabled) startBeatSequencer();
-    initStepDance3D(tableNum);
-  } else if (activeTab === "tab-trampoline") {
-    stopStepDance3D(); stopTrampoline3D();
-    initTrampoline3D(tableNum);
-  }
+  // Stop any running activity and show mode picker
+  stopStepDance3D(); stopTrampoline3D();
+  showTrainingModePicker(tableNum);
 }
 
 // Tool 1: Visual Story
@@ -4161,15 +4286,8 @@ function animate3DScene() {
     }
   }
 
-  // Smooth orbit camera using bossCamState
-  const camH = 11.5;
-  const camTX = player3dGroup.position.x + Math.sin(bossCamState.yaw) * bossCamState.dist;
-  const camTY = player3dGroup.position.y + camH;
-  const camTZ = player3dGroup.position.z + Math.cos(bossCamState.yaw) * bossCamState.dist;
-  camera3d.position.x += (camTX - camera3d.position.x) * 0.08;
-  camera3d.position.y += (camTY - camera3d.position.y) * 0.08;
-  camera3d.position.z += (camTZ - camera3d.position.z) * 0.08;
-  camera3d.lookAt(player3dGroup.position.x, player3dGroup.position.y + 1.2, player3dGroup.position.z);
+  // Smooth orbit camera with pitch + FOV
+  applyCamState(camera3d, player3dGroup.position, bossCamState, 0.08);
 
   // Golem Boss floating bobbing & rotating to face player
   if (boss3dGroup) {
@@ -5947,14 +6065,8 @@ function animateChillFarm3D() {
   chillFarmPortals.forEach(p => { p.rotation.y += 0.022; });
   updateFarmPets(time);
 
-  // Orbit camera with yaw + pinch zoom
-  const cfTX = chillFarmPlayer.position.x + Math.sin(chillCamState.yaw) * chillCamState.dist;
-  const cfTY = chillFarmPlayer.position.y + 13;
-  const cfTZ = chillFarmPlayer.position.z + Math.cos(chillCamState.yaw) * chillCamState.dist;
-  chillFarmCamera.position.x += (cfTX - chillFarmCamera.position.x) * 0.08;
-  chillFarmCamera.position.y += (cfTY - chillFarmCamera.position.y) * 0.08;
-  chillFarmCamera.position.z += (cfTZ - chillFarmCamera.position.z) * 0.08;
-  chillFarmCamera.lookAt(chillFarmPlayer.position.x, chillFarmPlayer.position.y + 1, chillFarmPlayer.position.z);
+  // Smooth orbit camera with pitch + FOV
+  applyCamState(chillFarmCamera, chillFarmPlayer.position, chillCamState, 0.08);
 
   chillFarmRenderer.render(chillFarmScene, chillFarmCamera);
 }
@@ -6591,14 +6703,8 @@ function animateDressupRunway3D() {
     }
   });
 
-  // Orbit camera with dressCamState yaw + zoom
-  const dcTX = dressupPlayer3d.position.x + Math.sin(dressCamState.yaw) * dressCamState.dist;
-  const dcTY = dressupPlayer3d.position.y + 11;
-  const dcTZ = dressupPlayer3d.position.z + Math.cos(dressCamState.yaw) * dressCamState.dist;
-  dressupCamera3d.position.x += (dcTX - dressupCamera3d.position.x) * 0.07;
-  dressupCamera3d.position.y += (dcTY - dressupCamera3d.position.y) * 0.07;
-  dressupCamera3d.position.z += (dcTZ - dressupCamera3d.position.z) * 0.07;
-  dressupCamera3d.lookAt(dressupPlayer3d.position.x, dressupPlayer3d.position.y + 1, dressupPlayer3d.position.z - 3);
+  // Smooth orbit camera with pitch + FOV
+  applyCamState(dressupCamera3d, dressupPlayer3d.position, dressCamState, 0.07);
 
   dressupRenderer3d.render(dressupScene3d, dressupCamera3d);
 }
@@ -6983,6 +7089,21 @@ document.addEventListener("DOMContentLoaded", () => {
   // Chill Farm Hint button
   const hintBtn = document.getElementById("chill-farm-hint-btn");
   if (hintBtn) hintBtn.addEventListener("click", triggerChillFarmHint3D);
+
+  // Training Mode Picker buttons
+  document.getElementById('pick-stepdance-btn')?.addEventListener('click', () => {
+    if (!activeTrainingTable) return;
+    sounds.click();
+    hideTrainingModePicker();
+    if (soundEnabled) startBeatSequencer();
+    initStepDance3D(activeTrainingTable);
+  });
+  document.getElementById('pick-trampoline-btn')?.addEventListener('click', () => {
+    if (!activeTrainingTable) return;
+    sounds.click();
+    hideTrainingModePicker();
+    initTrampoline3D(activeTrainingTable);
+  });
 
   // Multiplayer toggle
   const mpToggle = document.getElementById("multiplayer-toggle");
