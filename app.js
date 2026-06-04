@@ -2201,16 +2201,24 @@ function buildSdOverlay() {
   fb.id = 'sd-feedback-ov';
   arena.appendChild(fb);
 
-  // Mobile controls (joystick + jump)
+  // Joystick container (left half, floating)
   const mctrl = document.createElement('div');
-  mctrl.className = 'sd-mobile-controls sd-overlay-el';
+  mctrl.className = 'sd-overlay-el';
+  mctrl.style.cssText = 'position:absolute;inset:0;pointer-events:none;z-index:50;';
   mctrl.innerHTML = `
-    <div class="sd-joystick-zone" id="sd-joystick">
+    <div class="sd-joystick-zone" id="sd-joystick" style="pointer-events:all;position:absolute;opacity:0;left:44px;bottom:70px;">
       <div class="sd-joystick-knob" id="sd-joy-knob"></div>
     </div>
-    <button class="sd-jump-btn" id="sd-jump-btn2">⬆<br>กระโดด</button>
   `;
   arena.appendChild(mctrl);
+
+  // Jump button — FIXED at bottom-right, never moves
+  const jumpFixed = document.createElement('button');
+  jumpFixed.id = 'sd-jump-btn2';
+  jumpFixed.className = 'sd-jump-btn sd-overlay-el';
+  jumpFixed.style.cssText = 'position:absolute;right:14px;bottom:14px;pointer-events:all;z-index:60;';
+  jumpFixed.innerHTML = '⬆<br>กระโดด';
+  arena.appendChild(jumpFixed);
 
   // Exit button — stops scene AND goes back to training room
   const sdExitBtn = document.createElement('button');
@@ -2793,6 +2801,14 @@ function initTrampoline3D(tableNum) {
 
   trampRenderer.domElement.addEventListener('touchstart', () => unlockIOSAudio(), { once: true, passive: true });
   requestTrainingLandscape(document.getElementById('tramp-fullwrap'));
+
+  // Start music for Trampoline
+  if (soundEnabled) {
+    unlockIOSAudio();
+    startBeatSequencer();
+    startMelodySequencer('edm'); // EDM = bouncy/energetic
+  }
+
   animateTrampoline3D();
 }
 
@@ -2842,16 +2858,24 @@ function buildTrampOverlay() {
   fb.id = 'tramp-feedback';
   arena.appendChild(fb);
 
-  // Mobile controls
+  // Joystick container (floating, left half)
   const mctrl = document.createElement('div');
-  mctrl.className = 'sd-mobile-controls sd-overlay-el';
+  mctrl.className = 'sd-overlay-el';
+  mctrl.style.cssText = 'position:absolute;inset:0;pointer-events:none;z-index:50;';
   mctrl.innerHTML = `
-    <div class="sd-joystick-zone" id="tramp-joystick">
+    <div class="sd-joystick-zone" id="tramp-joystick" style="pointer-events:all;position:absolute;opacity:0;left:44px;bottom:70px;">
       <div class="sd-joystick-knob" id="tramp-joy-knob"></div>
     </div>
-    <button class="sd-jump-btn" id="tramp-jump-btn-ui">⬆<br>กระโดด</button>
   `;
   arena.appendChild(mctrl);
+
+  // Jump button — FIXED at bottom-right permanently
+  const jumpFixed = document.createElement('button');
+  jumpFixed.id = 'tramp-jump-btn-ui';
+  jumpFixed.className = 'sd-jump-btn sd-overlay-el';
+  jumpFixed.style.cssText = 'position:absolute;right:14px;bottom:14px;pointer-events:all;z-index:60;';
+  jumpFixed.innerHTML = '⬆<br>กระโดด';
+  arena.appendChild(jumpFixed);
 
   // Camera controls overlay
   addCamControlsOverlay(arena, trampCamState);
@@ -3275,6 +3299,7 @@ function stopTrampoline3D() {
   if (trampAnimId) { cancelAnimationFrame(trampAnimId); trampAnimId = null; }
   window.removeEventListener('keydown', handleTrampKey);
   if (trampCtrl) { trampCtrl.destroy(); trampCtrl = null; }
+  stopBeatSequencer(); stopMelodySequencer();
   exitTrainingFullscreen();
   if (trampRenderer) { try { trampRenderer.dispose(); } catch(e) {} trampRenderer = null; }
   trampScene = null;
@@ -4395,16 +4420,17 @@ function handleAnswerSelect3D(chosenVal, hitPortalGroup) {
     }
   }
 
-  // Load next question — keep player's current position
+  // Read answer aloud, THEN load next question
+  const _ans = currentQuestionData.ans;
+  speakThai(`${_ans}`); // say the answer number
   setTimeout(() => {
     if (bossQuestionsCorrect >= BOSS_QUESTIONS_REQUIRED) {
       endGameplaySession3D(true);
     } else {
       isAnswerProcessing = false;
-      // No position reset! Player continues from where they are
       nextActionQuestion3D();
     }
-  }, 1400);
+  }, 1600); // wait for TTS to finish
 }
 
 // 3D Player weapon slash projectile
@@ -4836,10 +4862,10 @@ function nextActionQuestion3D() {
   document.getElementById("action-question").innerText = `${currentQuestionData.table} x ${currentQuestionData.mult} = ?`;
   updatePortalBillboardTexts(currentQuestionData.opts);
 
-  // TTS: read the question aloud
+  // TTS: short question — just "N คูณ M เท่ากับ"
   setTimeout(() => {
-    speakThai(`${currentQuestionData.table} คูณ ${currentQuestionData.mult} เท่ากับเท่าไร`);
-  }, 200);
+    speakThai(`${currentQuestionData.table} คูณ ${currentQuestionData.mult} เท่ากับ`);
+  }, 250);
 }
 
 function onWindowResize3D() {
@@ -5669,8 +5695,9 @@ function initChillFarm3D() {
   chillFarmAnswerProcessing = false;
   chillFarmGems = 0;
   activeTreeIdx = -1;
-  chillCamState.yaw = 0; chillCamState.dist = 13;
-  farmPetCompanions = []; // reset pets
+  farmPetCompanions = [];
+  // Reset ALL cam state so view is always correct on entry
+  chillCamState.yaw = 0; chillCamState.pitch = 42; chillCamState.dist = 18; chillCamState.fov = 55;
 
   const banner = document.getElementById("chill-question-banner");
   if (banner) banner.style.display = "none";
@@ -5686,6 +5713,19 @@ function initChillFarm3D() {
     jumpBtnId: null
   });
   chillFarmRenderer.domElement.addEventListener('touchstart', () => unlockIOSAudio(), { once: true, passive: true });
+
+  // Set Chill Farm camera: top-down-ish view of island
+  const _cpR = chillCamState.pitch * Math.PI / 180;
+  const _cHD = chillCamState.dist * Math.cos(_cpR);
+  const _cVD = chillCamState.dist * Math.sin(_cpR);
+  chillFarmCamera.position.set(
+    Math.sin(chillCamState.yaw) * _cHD,
+    0.9 + _cVD,
+    Math.cos(chillCamState.yaw) * _cHD
+  );
+  chillFarmCamera.lookAt(0, 0, 0); // look at island center
+  chillFarmCamera.fov = chillCamState.fov;
+  chillFarmCamera.updateProjectionMatrix();
 
   chillFarmClock = new THREE.Clock();
   animateChillFarm3D();
@@ -6401,7 +6441,8 @@ function initDressupRunway3D() {
   dressupAnswerProcessing3d = false;
   dressupCombo3d = 0;
   dressupWalkingFinale = false;
-  dressCamState.yaw = 0; dressCamState.dist = 10;
+  // Reset ALL cam state — runway view
+  dressCamState.yaw = 0; dressCamState.pitch = 25; dressCamState.dist = 14; dressCamState.fov = 68;
 
   if (dressController) dressController.destroy();
   dressController = createArenaController({
@@ -6415,9 +6456,19 @@ function initDressupRunway3D() {
   });
   dressupRenderer3d.domElement.addEventListener('touchstart', () => unlockIOSAudio(), { once: true, passive: true });
 
-  // Set initial camera position before first render
-  dressupCamera3d.position.set(0, 12, 18);
-  dressupCamera3d.lookAt(0, 1, 5);
+  // Set camera directly to starting position (runway view)
+  const _dpR2 = dressCamState.pitch * Math.PI / 180;
+  const _dHD  = dressCamState.dist * Math.cos(_dpR2);
+  const _dVD  = dressCamState.dist * Math.sin(_dpR2);
+  dressupCamera3d.position.set(
+    Math.sin(dressCamState.yaw) * _dHD,
+    0.9 + _dVD,
+    8 + Math.cos(dressCamState.yaw) * _dHD
+  );
+  // Look ahead down the runway
+  dressupCamera3d.lookAt(0, 0.5, -4);
+  dressupCamera3d.fov = dressCamState.fov;
+  dressupCamera3d.updateProjectionMatrix();
 
   dressupClock3d = new THREE.Clock();
   nextDressupRunwayQ3D();
@@ -6481,19 +6532,19 @@ function buildRunwayStage3D() {
     });
   }
 
-  // Start backdrop
+  // Backdrop at FAR end of runway (visible ahead, not blocking camera)
   const backdrop = new THREE.Mesh(
     new THREE.BoxGeometry(14, 9, 0.35),
     new THREE.MeshStandardMaterial({ color: 0x16213e })
   );
-  backdrop.position.set(0, 4.5, 13);
+  backdrop.position.set(0, 4.5, -80); // far end, seen ahead
   dressupScene3d.add(backdrop);
 
   const sign = new THREE.Mesh(
     new THREE.BoxGeometry(10, 2.2, 0.25),
     new THREE.MeshStandardMaterial({ color: 0xffd700, emissive: 0x886600, roughness: 0.3 })
   );
-  sign.position.set(0, 7.5, 13.2);
+  sign.position.set(0, 7.5, -79.8);
   dressupScene3d.add(sign);
 }
 
@@ -6625,6 +6676,28 @@ function animateDressupRunway3D() {
   if (!dressupScene3d || !dressupRenderer3d) return;
 
   const time = dressupClock3d.getElapsedTime();
+
+  // Runway-specific camera — look at floor ahead of player, not at player's head
+  if (!dressupWalkingFinale && dressupPlayer3d) {
+    const _rpR = dressCamState.pitch * Math.PI / 180;
+    const _rHD = dressCamState.dist * Math.cos(_rpR);
+    const _rVD = dressCamState.dist * Math.sin(_rpR);
+    const camTX = dressupPlayer3d.position.x + Math.sin(dressCamState.yaw) * _rHD;
+    const camTY = dressupPlayer3d.position.y + _rVD;
+    const camTZ = dressupPlayer3d.position.z + Math.cos(dressCamState.yaw) * _rHD;
+    dressupCamera3d.position.x += (camTX - dressupCamera3d.position.x) * 0.07;
+    dressupCamera3d.position.y += (camTY - dressupCamera3d.position.y) * 0.07;
+    dressupCamera3d.position.z += (camTZ - dressupCamera3d.position.z) * 0.07;
+    // Look AHEAD of player — down the runway
+    dressupCamera3d.lookAt(
+      dressupPlayer3d.position.x,
+      0.5,
+      dressupPlayer3d.position.z - 12 // 12 units ahead = down runway
+    );
+    if (dressCamState.fov && Math.abs(dressupCamera3d.fov - dressCamState.fov) > 0.5) {
+      dressupCamera3d.fov = dressCamState.fov; dressupCamera3d.updateProjectionMatrix();
+    }
+  }
 
   if (dressupWalkingFinale) {
     // Cinematic catwalk finale — elegant strut
